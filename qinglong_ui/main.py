@@ -86,12 +86,12 @@ class CustomStandardItemModel(QStandardItemModel):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self,ip):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
-        self.api = QingLongApi("http://localhost:8090", "your_token_here")
+        self.api = QingLongApi(ip, "your_token_here")
 
         model = QStandardItemModel()
         model.setHorizontalHeaderLabels(["name", "path", "upgrade_at", "created_at", "url"])
@@ -218,10 +218,11 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
+    import sys
     logging.basicConfig(level=logging.DEBUG)
     _logger.debug("Starting Qinglong UI")
-
+    ip = sys.argv[1] if len(sys.argv) > 1 else "localhost:8090"
     app = QApplication([])
-    main_window = MainWindow()
+    main_window = MainWindow(ip)
     main_window.show()
     app.exec()
