@@ -1,0 +1,70 @@
+[project]
+name = "qinglong-uv"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "apscheduler>=3.11.0",
+    "fastapi>=0.115.12",
+    "gitpython>=3.1.44",
+    "httpx[http2]>=0.28.1",
+    "prometheus-client>=0.21.1",
+    "pydantic-settings>=2.8.1",
+    "sqlalchemy>=2.0.40",
+    "uvicorn[standard]>=0.34.0",
+]
+
+[project.scripts]
+qinglong-ui = "qinglong_ui.main"
+#designer = "scripts.designer"
+#ui-turn = "scripts.qt_turn"
+
+[tool.uv]
+no-binary-package = ["av"]
+
+# [tool.setuptools]
+# packages = ["qinglong", "qinglong_ui"]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[tool.ruff]
+line-length = 128
+target-version = "py313"
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+[tool.ruff.lint]
+ignore = ["F401"]
+
+[dependency-groups]
+dev = ["jurigged>=0.6.0"]
+ui = ["pyside6>=6.8.3"]

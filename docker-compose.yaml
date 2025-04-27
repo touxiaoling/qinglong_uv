@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  qinglong-uv:
+    build:
+      context: ./
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/code/data
+    restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: 50m
