@@ -6,10 +6,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "apscheduler>=3.11.0",
-    "fastapi>=0.115.12",
     "gitpython>=3.1.44",
     "httpx[http2]>=0.28.1",
-    "prometheus-client>=0.21.1",
+    "nicegui>=2.18.0",
     "pydantic-settings>=2.8.1",
     "shelvez>=0.2.1",
     "sqlalchemy>=2.0.40",
@@ -17,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-qinglong-ui = "qinglong_ui.main:main"
+#qinglong = "qinglong.main"
 # designer = "scripts.designer"
 # ui-turn = "scripts.qt_turn"
 
@@ -26,7 +25,7 @@ no-binary-package = ["av"]
 package = true
 
 [tool.setuptools]
-packages = ["qinglong", "qinglong_ui"]
+packages = ["qinglong"]
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -71,5 +70,6 @@ ignore = ["F401"]
 dev = [
     "jurigged>=0.6.0",
     "pytest>=8.3.5",
+    "pywebview>=5.4",
 ]
 ui = ["pyside6>=6.8.3"]

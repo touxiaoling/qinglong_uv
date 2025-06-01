@@ -1,132 +1,125 @@
 import logging
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, Body
-from fastapi.responses import JSONResponse
+from nicegui import ui
 
 from .config import settings as cfg
-from .scheduler import scheduler
 from . import api
-from . import errors
+
 
 _logger = logging.getLogger(__name__)
+# "name", "path", "upgrade_at", "created_at", "url"
+project_columns = [
+    {"name": "name", "label": "Name", "field": "name", "required": True, "align": "left"},
+    {"name": "path", "label": "Path", "field": "project_path", "sortable": True},
+    {"name": "upgrade_at", "label": "Upgrade At", "field": "upgrade_at", "sortable": True},
+    {"name": "created_at", "label": "Created At", "field": "created_at", "sortable": True},
+    {"name": "url", "label": "Url", "field": "url", "sortable": True},
+]
+
+# "name", "project_name", "status", "cron", "cmd", "upgrade_at", "created_at"
+task_columns = [
+    {"name": "name", "label": "Name", "field": "name", "required": True, "align": "left"},
+    {"name": "project_name", "label": "Project Name", "field": "project_name", "sortable": True},
+    {"name": "status", "label": "Status", "field": "status", "sortable": True},
+    {"name": "cron", "label": "Cron", "field": "cron", "sortable": True},
+    {"name": "cmd", "label": "Cmd", "field": "cmd", "sortable": True},
+    {"name": "upgrade_at", "label": "Upgrade At", "field": "upgrade_at", "sortable": True},
+    {"name": "created_at", "label": "Created At", "field": "created_at", "sortable": True},
+]
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    cfg.TASK_LOG_PATH.mkdir(parents=True, exist_ok=True)
-    cfg.SCRIPT_PATH.mkdir(parents=True, exist_ok=True)
-    cfg.PROJECT_PATH.mkdir(parents=True, exist_ok=True)
+class MainPage:
+    def __init__(self):
+        ui.label("Project")
+        with ui.grid(columns=3):
+            self.input_project_name = ui.input(label="name", placeholder="项目名称")
+            self.input_project_url = ui.input(label="url", placeholder="项目路径")
+        with ui.button_group():
+            ui.button("pull", on_click=self.pull_project)
+            ui.button("upgrade", on_click=self.upgrade_project)
+            ui.button("remove", on_click=self.remove_project)
+        self.project_table = ui.table(columns=project_columns, rows=[], row_key="name", selection="single")
 
-    await scheduler.start()
-    await api.sync_task()
-    yield
-    print("All tasks completed.")
+        ui.label("Task")
+        with ui.grid(columns=3):
+            self.input_task_name = ui.input(label="name", placeholder="任务名称")
+            self.input_task_cron = ui.input(label="cron", placeholder="cron")
+            self.input_task_cmd = ui.input(label="cmd", placeholder="cmd")
+        with ui.button_group():
+            ui.button("set", on_click=self.set_task)
+            ui.button("remove", on_click=self.remove_task)
+        self.task_table = ui.table(columns=task_columns, rows=[], row_key="name", selection="single")
+        with ui.button_group():
+            ui.button("start", on_click=self.start_task)
+            ui.button("pause", on_click=self.pause_task)
+            ui.button("run", on_click=self.run_task)
 
+    @property
+    def project_selected_name(self):
+        return self.project_table.selected[0]["name"]
 
-app = FastAPI(title="Qinglong-uv", version="0.0.2", debug=cfg.DEBUG, lifespan=lifespan)
+    @property
+    def task_selected_name(self):
+        return self.task_table.selected[0]["name"]
 
+    def update_project_table(self):
+        projects = api.list_projects()
+        self.project_table.update_rows(projects)
 
-@app.get("/")
-async def root():
-    return JSONResponse(content={"msg": "Hello, Qinglong-uv!"})
+    def update_task_table(self):
+        tasks = api.list_tasks()
+        self.task_table.update_rows(tasks)
 
+    def pull_project(self):
+        name = self.input_project_name.value
+        url = self.input_project_url.value
+        ui.notify(f"pulling {name}:{url}...")
+        api.pull_project(url,name)
+        self.update_project_table()
 
-@app.get("/api/project_list")
-async def get_project_list():
-    projects = await api.get_project_list()
-    projects = {k: v.model_dump() for k, v in projects.items()}
-    return JSONResponse(content=projects)
+    def upgrade_project(self):
+        ui.notify(f"upgrading {self.project_selected_name}...")
+        api.upgrade_project(self.project_selected_name)
+        self.update_project_table()
 
+    def remove_project(self):
+        ui.notify(f"removing {self.project_selected_name}...")
+        api.remove_project(self.project_selected_name)
+        self.update_project_table()
 
-@app.get("/api/task_list")
-async def get_task_list():
-    tasks = await api.get_task_list()
-    tasks = {k: v.model_dump() for k, v in tasks.items()}
-    return JSONResponse(content=tasks)
+    def set_task(self):
+        name = self.input_task_name.value
+        project_name = self.project_selected_name
+        cron = self.input_task_cron.value
+        cmd = self.input_task_cmd.value
+        ui.notify(f"setting {name}...")
+        api.set_task(name, project_name, cron, cmd)
+        self.update_task_table()
 
+    def remove_task(self):
+        ui.notify(f"removing {self.task_selected_name}...")
+        api.remove_task(self.task_selected_name)
+        self.update_task_table()
 
-@app.post("/api/upload_script")
-async def upload_script(name: str = Body(...), file: bytes = Body(...)):
-    await api.upload_script(name=name, contents=file)
-    return JSONResponse({"res": "ok"})
+    def start_task(self):
+        ui.notify(f"starting {self.task_selected_name}...")
+        api.start_task(self.task_selected_name)
+        self.update_task_table()
 
+    def pause_task(self):
+        ui.notify(f"pausing {self.task_selected_name}...")
+        api.pause_task(self.task_selected_name)
+        self.update_task_table()
 
-@app.post("/api/pull_project")
-async def pull_project(url: str = Body(...), name: str = Body(None), one_file: bool = Body(False)):
-    await api.pull_project(url=url, name=name, one_file=one_file)
-    return JSONResponse({"res": "ok"})
+    def run_task(self):
+        ui.notify(f"running {self.task_selected_name}...")
+        api.run_task(self.task_selected_name)
+        self.update_task_table()
 
+    def start(self):
+        self.update_project_table()
+        self.update_task_table()
+        ui.run(native=True)
 
-@app.post("/api/upgrade_project")
-async def upgrade_project(project_name: str = Body(..., embed=True)):
-    try:
-        await api.upgrade_project(project_name=project_name)
-    except errors.ProjectNotFoundError:
-        return JSONResponse(status_code=404, content={"message": "Project not found"})
-
-    return JSONResponse(status_code=200, content={"message": "Project upgraded successfully"})
-
-
-@app.post("/api/remove_project")
-async def remove_project(project_name: str = Body(..., embed=True)):
-    try:
-        await api.remove_project(project_name=project_name)
-
-    except errors.ProjectNotFoundError:
-        return JSONResponse(status_code=404, content={"message": "Project not found"})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"message": f"Error removing project: {str(e)}"})
-
-    return JSONResponse(status_code=200, content={"message": "Project removed successfully"})
-
-
-@app.post("/api/set_task")
-async def set_task(name: str = Body(...), project_name: str = Body(...), cron: str = Body(...), command: str = Body(...)):
-    await api.set_task(name=name, project_name=project_name, cron=cron, cmd=command)
-
-    return JSONResponse(status_code=200, content={"message": "Task added successfully"})
-
-
-@app.post("/api/remove_task")
-async def remove_task(task_name: str = Body(..., embed=True)):
-    try:
-        await api.remove_task(task_name=task_name)
-    except errors.TaskNotFoundError:
-        _logger.error(f"Task {task_name} not found")
-        return JSONResponse(status_code=404, content={"message": "Task not found"})
-
-    return JSONResponse(status_code=200, content={"message": "Task removed successfully"})
-
-
-@app.post("/api/start_task")
-async def start_task(task_name: str = Body(..., embed=True)):
-    try:
-        await api.start_task(task_name=task_name)
-    except errors.TaskNotFoundError:
-        _logger.error(f"Task {task_name} not found")
-        return JSONResponse(status_code=404, content={"message": "Task not found"})
-
-    return JSONResponse(status_code=200, content={"message": "Task started successfully"})
-
-
-@app.post("/api/pause_task")
-async def pause_task(task_name: str = Body(..., embed=True)):
-    try:
-        await api.pause_task(task_name=task_name)
-    except errors.TaskNotFoundError:
-        _logger.error(f"Task {task_name} not found")
-        return JSONResponse(status_code=404, content={"message": "Task not found"})
-
-    return JSONResponse(status_code=200, content={"message": "Task paused successfully"})
-
-
-@app.post("/api/run_task")
-async def run_task(task_name: str = Body(..., embed=True)):
-    try:
-        await api.run_task(task_name=task_name)
-    except errors.TaskNotFoundError:
-        _logger.error(f"Task {task_name} not found")
-        return JSONResponse(status_code=404, content={"message": "Task not found"})
-
-    return JSONResponse(status_code=200, content={"message": "Task paused successfully"})
+if __name__ in {"__main__", "__mp_main__"}:
+    main_page = MainPage()
+    main_page.start()

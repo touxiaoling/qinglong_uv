@@ -13,17 +13,17 @@ from . import errors
 _logger = logging.getLogger(__name__)
 
 
-async def get_project_list():
-    projects: dict[str, ProjectInfo] = {k: v for k, v in project_db.items()}
+def list_projects():
+    projects: list[dict] = [v.model_dump() for v in project_db.values()]
     return projects
 
 
-async def get_task_list():
-    tasks: dict[str, TaskInfo] = {k: v for k, v in task_db.items()}
+def list_tasks():
+    tasks: list[dict] = [v.model_dump() for v in task_db.values()]
     return tasks
 
 
-async def upload_script(
+def upload_script(
     name: str,
     contents: bytes,
 ):
@@ -42,7 +42,7 @@ async def upload_script(
     )
 
 
-async def pull_project(url: str, name: str = None, one_file: bool = False):
+def pull_project(url: str, name: str = None, one_file: bool = False):
     project_name = name if name else url.split("/")[-1]
 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -72,26 +72,26 @@ async def pull_project(url: str, name: str = None, one_file: bool = False):
         )
 
     if one_file:
-        await project_downloader.download()
+        project_downloader.download()
     else:
         project_downloader.download()
 
     project_db[project_name] = project_info
 
 
-async def upgrade_project(project_name: str):
+def upgrade_project(project_name: str):
     project_info: ProjectInfo = project_db.get(project_name)
     if not project_info:
         raise errors.ProjectNotFoundError(project_name)
 
-    await pull_project(
+    pull_project(
         url=project_info.url,
         name=project_info.name,
         one_file=project_info.one_file,
     )
 
 
-async def remove_project(project_name: str):
+def remove_project(project_name: str):
     project_info: ProjectInfo = project_db.get(project_name)
     if not project_info:
         raise errors.ProjectNotFoundError(project_name)
@@ -117,7 +117,7 @@ async def remove_project(project_name: str):
     del project_db[project_name]
 
 
-async def set_task(name: str, project_name: str, cron: str, cmd: str):
+def set_task(name: str, project_name: str, cron: str, cmd: str):
     if project_name not in project_db:
         raise errors.ProjectNotFoundError(project_name)
 
@@ -146,55 +146,55 @@ async def set_task(name: str, project_name: str, cron: str, cmd: str):
 
     task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path)
 
-    await scheduler.add_job(func=task.run, trigger=task_info.cron, job_id=name)
+    scheduler.add_job(func=task.run, trigger=task_info.cron, job_id=name)
 
     task_db[name] = task_info
 
 
-async def remove_task(task_name: str):
+def remove_task(task_name: str):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
 
-    await scheduler.remove_job(task_name)
+    scheduler.remove_job(task_name)
 
     del task_db[task_name]
 
 
-async def start_task(task_name: str):
+def start_task(task_name: str):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
     task_info: TaskInfo = task_db[task_name]
     task_info.status = TaskStatus.STARTED
-    await scheduler.resume_job(task_name)
+    scheduler.resume_job(task_name)
     task_info.upgrade_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     task_db[task_name] = task_info
     return task_info
 
 
-async def pause_task(task_name: str):
+def pause_task(task_name: str):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
     task_info: TaskInfo = task_db[task_name]
     task_info.status = TaskStatus.PAUSED
-    await scheduler.pause_job(task_name)
+    scheduler.pause_job(task_name)
     task_info.upgrade_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     task_db[task_name] = task_info
     return task_info
 
 
-async def run_task(task_name: str):
+def run_task(task_name: str):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
     task_info: TaskInfo = task_db[task_name]
-    await scheduler.run_job(task_name)
+    scheduler.run_job(task_name)
 
     return task_info
 
 
-async def sync_task():
+def sync_task():
     tasks = set(task_db.keys())
     jobs = set(job.id for job in scheduler.jobs)
     for task_name in tasks - jobs:
         del task_db[task_name]
     for job_name in jobs - tasks:
-        await scheduler.remove_job(job_name)
+        scheduler.remove_job(job_name)

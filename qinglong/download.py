@@ -11,15 +11,15 @@ class FileDownloader:
     def __init__(self, url, filepath, cookies=None):
         self.url = url
         self.filepath = Path(filepath)
-        self.session = httpx.AsyncClient()
+        self.session = httpx.Client()
         self.session.headers.update(cfg.DOWNLOAD_HEADERS)
         if cookies:
             self.session.cookies.update(cookies)
 
-    async def download(self):
+    def download(self):
         url = self.url
         _logger.debug(f"Downloading file from {url} to {self.filepath}")
-        response = await self.session.get(url, timeout=30)
+        response = self.session.get(url, timeout=30)
         response.raise_for_status()
         _logger.debug(f"Downloaded file from {url} to {self.filepath}")
         self.filepath.write_bytes(response.content)
