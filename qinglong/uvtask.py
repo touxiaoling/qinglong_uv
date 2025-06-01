@@ -65,19 +65,19 @@ class UvTask:
 
     def get_logs(self, limit: int = 1000) -> list[str]:
         """返回倒序的日志（读取文件最后 `limit` 行）"""
+        lines = []
         if not self.log_file.exists():
             _logger.warning(f"Log file {self.log_file} does not exist.")
-            return []
+            return lines
 
+        chunk_size = 4096  # 每次读取 4KB
         # 使用反向读取文件的方式获取最后 N 行（高效方式）
-        with open(self.log_file, "rb") as f:
+        with self.log_file.open("rb") as f:
             # 移动到文件末尾
             f.seek(0, 2)  # os.SEEK_END = 2
             file_size = f.tell()
             remaining_bytes = file_size
-            lines = []
-            chunk_size = 4096  # 每次读取 4KB
-
+            left_content = b""
             while remaining_bytes > 0 and len(lines) < limit:
                 # 计算本次读取的字节数
                 read_size = min(chunk_size, remaining_bytes)
@@ -87,8 +87,13 @@ class UvTask:
                 f.seek(-read_size, 1)
 
                 # 按行分割并过滤空行
-                chunk_lines = chunk.decode("utf-8", errors="ignore").split("\n")
-                lines.extend(reversed(chunk_lines))
+                chunk_lines = (chunk + left_content).split(b"\n")
+                if chunk_lines:
+                    left_content = chunk_lines[0]
+                    chunk_lines = chunk_lines[1:]
+                    chunk_lines = [v.decode("utf-8", errors="ignore") for v in reversed(chunk_lines)]
+                    lines.extend(chunk_lines)
 
-            # 返回最后 `limit` 行（并反转顺序，使最新的在前）
-            return list(lines)[-limit:]
+            if remaining_bytes <= 0:
+                lines.append(left_content.decode("utf-8", errors="ignore"))
+            return lines

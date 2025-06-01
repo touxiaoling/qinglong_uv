@@ -29,6 +29,8 @@ task_columns = [
 
 class MainPage:
     def __init__(self):
+        api.init_task()
+
         ui.label("Project")
         with ui.grid(columns=3):
             self.input_project_name = ui.input(label="name", placeholder="项目名称")

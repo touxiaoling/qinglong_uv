@@ -3,11 +3,10 @@ import logging
 import time
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import undefined
-from sqlalchemy import create_engine, event
 
 from .config import settings as cfg
 
@@ -17,7 +16,7 @@ _logger = logging.getLogger(__name__)
 class Scheduler:
     def __init__(self):
         cfg.DB_PATH.mkdir(parents=True, exist_ok=True)
-        jobstores = {"default": SQLAlchemyJobStore(engine=self.create_sqlite_engine())}
+        jobstores = {"default": MemoryJobStore()}
         self.scheduler = BackgroundScheduler(jobstores=jobstores)
         self.scheduler.start()
 
@@ -26,6 +25,8 @@ class Scheduler:
         return self.scheduler.get_jobs()
 
     def create_sqlite_engine(self):
+        from sqlalchemy import create_engine, event
+
         def enable_wal(dbapi_conn, connection_record):
             dbapi_conn.execute("PRAGMA journal_mode=WAL;")
             # 推荐同时设置以下优化参数
@@ -44,7 +45,7 @@ class Scheduler:
         event.listen(engine, "connect", enable_wal)
         return engine
 
-    def add_job(self, job_id, func, trigger, max_instances=1, **kwargs):
+    def add_job(self, job_id, func, trigger, paused=False, max_instances=1, **kwargs):
         try:
             trigger = int(trigger)
         except ValueError:
@@ -60,6 +61,8 @@ class Scheduler:
         _logger.info(f"add_job: {job_id}, {trigger}, {max_instances}, {kwargs}")
 
         job = self.scheduler.add_job(func, id=job_id, trigger=trigger, max_instances=max_instances, **kwargs)
+        if paused:
+            self.pause_job(job_id)
         return job
 
     def remove_job(self, job_id):

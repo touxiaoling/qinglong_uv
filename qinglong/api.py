@@ -168,6 +168,15 @@ def get_task_logs(task_name: str, limit: int = 1000):
     return task.get_logs(limit=limit)
 
 
+def init_task():
+    for task_name, task_info in task_db.items():
+        project_info: ProjectInfo = project_db[task_info.project_name]
+        task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path)
+        scheduler.add_job(
+            func=task.run, trigger=task_info.cron, job_id=task_name, paused=(task_info.status == TaskStatus.PAUSED)
+        )
+
+
 def sync_task():
     tasks = set(task_db.keys())
     jobs = set(job.id for job in scheduler.jobs)
