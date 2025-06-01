@@ -124,7 +124,7 @@ class MainPage:
         task_logs = api.get_task_logs(task_name)
         task_logs = "\n".join(task_logs)
         _logger.debug(f"task_logs: {task_logs}")
-        with ui.dialog() as dialog, ui.card():
+        with ui.dialog() as dialog, ui.card().classes("max-w-[90vw]"):
             result = ui.markdown()
             result.content = f"```\n{task_logs}\n```"
             dialog.open()
