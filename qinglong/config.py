@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     PROXY: str = ""
     DB_PATH: Path = Path("./data/db")
     # 任务脚本路径
-    SCRIPT_PATH: Path = Path("./data/scripts")
     PROJECT_PATH: Path = Path("./data/projects")
     # 任务日志路径
     TASK_LOG_PATH: Path = Path("./data/log")

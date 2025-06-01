@@ -53,7 +53,6 @@ class Scheduler:
 scheduler = Scheduler()
 
 if __name__ == "__main__":
-
     scheduler.start()
 
     def job_func():

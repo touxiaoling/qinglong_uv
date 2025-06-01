@@ -23,58 +23,29 @@ def list_tasks():
     return tasks
 
 
-def upload_script(
-    name: str,
-    contents: bytes,
-):
-    script_path = cfg.SCRIPT_PATH / name
-    script_path.write_bytes(contents)
-    script_path = script_path.absolute()
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    project_db[script_path] = ProjectInfo(
-        name=name,
-        one_file=True,
-        url=None,
-        project_path=str(script_path),
-        created_at=created_at,
-        upgrade_at=created_at,
-    )
-
-
-def pull_project(url: str, name: str = None, one_file: bool = False):
+def pull_project(url: str, name: str = None):
     project_name = name if name else url.split("/")[-1]
 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if one_file:
-        _logger.debug(f"one_file: {one_file}")
-        project_path = cfg.SCRIPT_PATH / project_name
-        project_downloader = FileDownloader(url=url, filepath=project_path)
-    else:
-        project_path = cfg.PROJECT_PATH / project_name
-        project_downloader = ProjectDownloder(url=url, projectpath=project_path)
+    project_path = cfg.PROJECT_PATH / project_name
+    project_downloader = ProjectDownloder(url=url, projectpath=project_path)
 
     if project_name in project_db:
         project_info: ProjectInfo = project_db[project_name]
         project_info.url = url
-        project_info.one_file = one_file  # 需要检查是否相等，不想等要做清理，或者报错。
         project_info.project_path = str(project_path)
         project_info.upgrade_at = created_at
     else:
         project_info = ProjectInfo(
             name=project_name,
-            one_file=one_file,
             url=url,
             project_path=str(project_path),
             created_at=created_at,
             upgrade_at=created_at,
         )
 
-    if one_file:
-        project_downloader.download()
-    else:
-        project_downloader.download()
+    project_downloader.download()
 
     project_db[project_name] = project_info
 
@@ -98,10 +69,7 @@ def remove_project(project_name: str):
 
     # TODO: 这里需要删除定时任务,或者对存在定时任务的工程报错。
 
-    if project_info.one_file:
-        base_path = cfg.SCRIPT_PATH
-    else:
-        base_path = cfg.PROJECT_PATH
+    base_path = cfg.PROJECT_PATH
     project_path = base_path / project_info.name
     _logger.debug(f"remove project: {project_path},absolute: {project_path.absolute()}")
     if project_path.exists():

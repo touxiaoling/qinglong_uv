@@ -73,7 +73,7 @@ class MainPage:
         name = self.input_project_name.value
         url = self.input_project_url.value
         ui.notify(f"pulling {name}:{url}...")
-        api.pull_project(url,name)
+        api.pull_project(url, name)
         self.update_project_table()
 
     def upgrade_project(self):
@@ -115,11 +115,7 @@ class MainPage:
         api.run_task(self.task_selected_name)
         self.update_task_table()
 
-    def start(self):
+    def start(self, debug=False):
         self.update_project_table()
         self.update_task_table()
-        ui.run(native=True)
-
-if __name__ in {"__main__", "__mp_main__"}:
-    main_page = MainPage()
-    main_page.start()
+        ui.run(host="0.0.0.0", port=8080, title="Qinglong", reload=debug, show=debug)

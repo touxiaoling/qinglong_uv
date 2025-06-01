@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 class ProjectInfo(BaseModel):
     name: str
-    one_file: bool = False
     url: str = None
     project_path: str
     created_at: str

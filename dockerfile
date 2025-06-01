@@ -18,4 +18,4 @@ COPY pyproject.toml uv.lock ./
 COPY ./qinglong ./qinglong
 RUN mkdir -p /code/data/.cache
 RUN /ffmpegwrapper.sh -version
-ENTRYPOINT ["uv" , "run","--no-dev" ,"uvicorn", "qinglong.main:app", "--host", "0.0.0.0", "--port", "80" ,"--loop","uvloop","--http","httptools"]
+ENTRYPOINT ["uv" , "run","--no-dev" ,"-m", "qinglong"]
