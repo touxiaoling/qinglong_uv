@@ -47,11 +47,13 @@ class MainPage:
         with ui.button_group():
             ui.button("set", on_click=self.set_task)
             ui.button("remove", on_click=self.remove_task)
+            ui.button("sync", on_click=self.sync_task)
         self.task_table = ui.table(columns=task_columns, rows=[], row_key="name", selection="single")
         with ui.button_group():
             ui.button("start", on_click=self.start_task)
             ui.button("pause", on_click=self.pause_task)
             ui.button("run", on_click=self.run_task)
+            ui.button("logs", on_click=self.show_task_logs)
 
     @property
     def project_selected_name(self):
@@ -115,7 +117,22 @@ class MainPage:
         api.run_task(self.task_selected_name)
         self.update_task_table()
 
-    def start(self, debug=False):
+    def show_task_logs(self):
+        task_name = self.task_selected_name
+        task_logs = api.get_task_logs(task_name)
+        task_logs = "\n".join(task_logs)
+        _logger.debug(f"task_logs: {task_logs}")
+        with ui.dialog() as dialog, ui.card():
+            result = ui.markdown()
+            result.content = f"```\n{task_logs}\n```"
+            dialog.open()
+
+    def sync_task(self):
+        ui.notify("syncing tasks...")
+        api.sync_task()
+        self.update_task_table()
+
+    def start(self, host="0.0.0.0", port=80, debug=False):
         self.update_project_table()
         self.update_task_table()
-        ui.run(host="0.0.0.0", port=8080, title="Qinglong", reload=debug, show=debug)
+        ui.run(host=host, port=port, title="Qinglong", dark=None, reload=debug, show=debug, uvicorn_reload_dirs="qinglong")

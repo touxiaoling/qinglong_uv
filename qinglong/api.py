@@ -6,7 +6,7 @@ from .config import settings as cfg
 from .data_struct import ProjectInfo, TaskInfo, TaskStatus
 from .data_base import project_db, task_db
 from .scheduler import scheduler
-from .download import FileDownloader, ProjectDownloder
+from .download import ProjectDownloder
 from .uvtask import UvTask
 from . import errors
 
@@ -58,7 +58,6 @@ def upgrade_project(project_name: str):
     pull_project(
         url=project_info.url,
         name=project_info.name,
-        one_file=project_info.one_file,
     )
 
 
@@ -154,9 +153,19 @@ def run_task(task_name: str):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
     task_info: TaskInfo = task_db[task_name]
-    scheduler.run_job(task_name)
+
+    scheduler.run_job(task_name, paused=(task_info.status == TaskStatus.PAUSED))
 
     return task_info
+
+
+def get_task_logs(task_name: str, limit: int = 1000):
+    if task_name not in task_db:
+        raise errors.TaskNotFoundError(task_name)
+    task_info: TaskInfo = task_db[task_name]
+    project_info: ProjectInfo = project_db[task_info.project_name]
+    task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path)
+    return task.get_logs(limit=limit)
 
 
 def sync_task():

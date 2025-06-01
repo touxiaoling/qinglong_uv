@@ -15,11 +15,6 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
 ]
 
-[project.scripts]
-#qinglong = "qinglong.main"
-# designer = "scripts.designer"
-# ui-turn = "scripts.qt_turn"
-
 [tool.uv]
 no-binary-package = ["av"]
 package = true
