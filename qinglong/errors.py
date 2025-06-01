@@ -20,6 +20,7 @@ class TaskError(Exception):
 
     pass
 
+
 class SetTaskError(TaskError):
     """Raised when a task is not found."""
 
@@ -29,6 +30,7 @@ class SetTaskError(TaskError):
 
     def __str__(self):
         return f"Task '{self.task_name}' set error."
+
 
 class TaskNotFoundError(TaskError):
     """Raised when a task is not found."""

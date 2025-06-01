@@ -27,6 +27,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Qinglong-uv", version="0.0.2", debug=cfg.DEBUG, lifespan=lifespan)
 
 
+@app.get("/")
+async def root():
+    return JSONResponse(content={"msg": "Hello, Qinglong-uv!"})
+
+
 @app.get("/api/project_list")
 async def get_project_list():
     projects = await api.get_project_list()
@@ -43,7 +48,7 @@ async def get_task_list():
 
 @app.post("/api/upload_script")
 async def upload_script(name: str = Body(...), file: bytes = Body(...)):
-    api.upload_script(name=name, contents=file)
+    await api.upload_script(name=name, contents=file)
     return JSONResponse({"res": "ok"})
 
 
@@ -88,6 +93,7 @@ async def remove_task(task_name: str = Body(..., embed=True)):
     try:
         await api.remove_task(task_name=task_name)
     except errors.TaskNotFoundError:
+        _logger.error(f"Task {task_name} not found")
         return JSONResponse(status_code=404, content={"message": "Task not found"})
 
     return JSONResponse(status_code=200, content={"message": "Task removed successfully"})
@@ -98,6 +104,7 @@ async def start_task(task_name: str = Body(..., embed=True)):
     try:
         await api.start_task(task_name=task_name)
     except errors.TaskNotFoundError:
+        _logger.error(f"Task {task_name} not found")
         return JSONResponse(status_code=404, content={"message": "Task not found"})
 
     return JSONResponse(status_code=200, content={"message": "Task started successfully"})
@@ -108,6 +115,7 @@ async def pause_task(task_name: str = Body(..., embed=True)):
     try:
         await api.pause_task(task_name=task_name)
     except errors.TaskNotFoundError:
+        _logger.error(f"Task {task_name} not found")
         return JSONResponse(status_code=404, content={"message": "Task not found"})
 
     return JSONResponse(status_code=200, content={"message": "Task paused successfully"})
@@ -115,9 +123,10 @@ async def pause_task(task_name: str = Body(..., embed=True)):
 
 @app.post("/api/run_task")
 async def run_task(task_name: str = Body(..., embed=True)):
-    pass
+    try:
+        await api.run_task(task_name=task_name)
+    except errors.TaskNotFoundError:
+        _logger.error(f"Task {task_name} not found")
+        return JSONResponse(status_code=404, content={"message": "Task not found"})
 
-
-@app.post("/api/stop_task")
-async def stop_task(task_name: str = Body(..., embed=True)):
-    pass
+    return JSONResponse(status_code=200, content={"message": "Task paused successfully"})

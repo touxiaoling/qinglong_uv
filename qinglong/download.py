@@ -5,8 +5,10 @@ from git import Repo
 from .config import settings as cfg
 
 _logger = logging.getLogger(__name__)
-class FileDownloader():
-    def __init__(self,url,filepath,cookies=None):
+
+
+class FileDownloader:
+    def __init__(self, url, filepath, cookies=None):
         self.url = url
         self.filepath = Path(filepath)
         self.session = httpx.AsyncClient()
@@ -22,11 +24,12 @@ class FileDownloader():
         _logger.debug(f"Downloaded file from {url} to {self.filepath}")
         self.filepath.write_bytes(response.content)
 
-class ProjectDownloder():
-    def __init__(self,url,projectpath):
+
+class ProjectDownloder:
+    def __init__(self, url, projectpath):
         self.url = url
         self.projectpath = Path(projectpath)
-    
+
     def download(self):
         if not self.projectpath.exists():
             repo = Repo.clone_from(self.url, self.projectpath, depth=1)

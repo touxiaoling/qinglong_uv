@@ -1,6 +1,6 @@
 import asyncio
 import logging
-
+from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.triggers.cron import CronTrigger
@@ -45,6 +45,9 @@ class Scheduler:
 
     async def resume_job(self, job_id):
         self.scheduler.resume_job(job_id)
+
+    async def run_job(self, job_id):
+        self.scheduler.modify_job(job_id, next_run_time=datetime.now())
 
 
 scheduler = Scheduler()

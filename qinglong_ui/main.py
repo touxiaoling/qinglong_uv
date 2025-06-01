@@ -86,7 +86,7 @@ class CustomStandardItemModel(QStandardItemModel):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self,ip):
+    def __init__(self, ip):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
@@ -112,9 +112,10 @@ class MainWindow(QMainWindow):
         self.ui.removeButton.clicked.connect(self.on_click_remove_button)
 
         self.ui.setButton.clicked.connect(self.on_click_set_button)
-        self.ui.removeButton_2.clicked.connect(self.on_click_remove_task_button)
         self.ui.startButton.clicked.connect(self.on_click_start_task_button)
         self.ui.pauseButton.clicked.connect(self.on_click_pause_task_button)
+        self.ui.removeButton_2.clicked.connect(self.on_click_remove_task_button)
+        self.ui.runButton.clicked.connect(self.on_click_run_task_button)
 
         self.set_project_view()
         self.set_task_view()
@@ -192,14 +193,6 @@ class MainWindow(QMainWindow):
         self.api.set_task(name, project_name, cron, cmd)
         self.set_task_view()
 
-    def on_click_remove_task_button(self):
-        task_name = self.get_view_select_name(self.ui.taskView)
-        if not task_name:
-            QMessageBox.warning(self, "Error", "Please select a task")
-            return
-        self.api.remove_task(task_name)
-        self.set_task_view()
-
     def on_click_start_task_button(self):
         task_name = self.get_view_select_name(self.ui.taskView)
         if not task_name:
@@ -216,9 +209,26 @@ class MainWindow(QMainWindow):
         self.api.pause_task(task_name)
         self.set_task_view()
 
+    def on_click_remove_task_button(self):
+        task_name = self.get_view_select_name(self.ui.taskView)
+        if not task_name:
+            QMessageBox.warning(self, "Error", "Please select a task")
+            return
+        self.api.remove_task(task_name)
+        self.set_task_view()
 
-if __name__ == "__main__":
+    def on_click_run_task_button(self):
+        task_name = self.get_view_select_name(self.ui.taskView)
+        if not task_name:
+            QMessageBox.warning(self, "Error", "Please select a task")
+            return
+        self.api.run_task(task_name)
+        self.set_task_view()
+
+
+def main():
     import sys
+
     logging.basicConfig(level=logging.DEBUG)
     _logger.debug("Starting Qinglong UI")
     ip = sys.argv[1] if len(sys.argv) > 1 else "localhost:8090"
@@ -226,3 +236,7 @@ if __name__ == "__main__":
     main_window = MainWindow(ip)
     main_window.show()
     app.exec()
+
+
+if __name__ == "__main__":
+    main()

@@ -11,20 +11,22 @@ dependencies = [
     "httpx[http2]>=0.28.1",
     "prometheus-client>=0.21.1",
     "pydantic-settings>=2.8.1",
+    "shelvez>=0.2.1",
     "sqlalchemy>=2.0.40",
     "uvicorn[standard]>=0.34.0",
 ]
 
 [project.scripts]
-qinglong-ui = "qinglong_ui.main"
-#designer = "scripts.designer"
-#ui-turn = "scripts.qt_turn"
+qinglong-ui = "qinglong_ui.main:main"
+# designer = "scripts.designer"
+# ui-turn = "scripts.qt_turn"
 
 [tool.uv]
 no-binary-package = ["av"]
+package = true
 
-# [tool.setuptools]
-# packages = ["qinglong", "qinglong_ui"]
+[tool.setuptools]
+packages = ["qinglong", "qinglong_ui"]
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -66,5 +68,8 @@ exclude = [
 ignore = ["F401"]
 
 [dependency-groups]
-dev = ["jurigged>=0.6.0"]
+dev = [
+    "jurigged>=0.6.0",
+    "pytest>=8.3.5",
+]
 ui = ["pyside6>=6.8.3"]

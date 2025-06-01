@@ -10,7 +10,6 @@ wheels/
 .venv
 log/
 db/
-scripts/
 projects/
 docker-compose.override.yaml
 /data

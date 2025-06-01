@@ -3,7 +3,7 @@ import shutil
 import logging
 
 from .config import settings as cfg
-from .data_struct import ProjectInfo, TaskInfo,TaskStatus
+from .data_struct import ProjectInfo, TaskInfo, TaskStatus
 from .data_base import project_db, task_db
 from .scheduler import scheduler
 from .download import FileDownloader, ProjectDownloder
@@ -144,7 +144,7 @@ async def set_task(name: str, project_name: str, cron: str, cmd: str):
             status="started",
         )
 
-    task = UvTask(cmd=task_info.command, project_path=project_info.project_path)
+    task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path)
 
     await scheduler.add_job(func=task.run, trigger=task_info.cron, job_id=name)
 
@@ -183,7 +183,13 @@ async def pause_task(task_name: str):
 
 
 async def run_task(task_name: str):
-    pass
+    if task_name not in task_db:
+        raise errors.TaskNotFoundError(task_name)
+    task_info: TaskInfo = task_db[task_name]
+    await scheduler.run_job(task_name)
+
+    return task_info
+
 
 async def sync_task():
     tasks = set(task_db.keys())

@@ -12,17 +12,19 @@ _logger = logging.getLogger(__name__)
 class UvTask:
     def __init__(
         self,
+        name: str,
         cmd: str,
         project_path: str,
         uv_args: str = "",
         max_log_size: int = 10 * 1024 * 1024,  # 10MB
     ):
+        self.name = name
         self.cmd = cmd
         self.uv_args = uv_args
         self.project_path = Path(project_path)
         self.max_log_size = max_log_size  # 日志文件最大大小（字节）
         self.proc = None
-        self.log_file = cfg.TASK_LOG_PATH / (self.project_path.name + ".log")
+        self.log_file = cfg.TASK_LOG_PATH / (self.name + ".log")
         _logger.info(f"uvtask log file: {self.log_file}")
 
     async def run(self, wait=True):
