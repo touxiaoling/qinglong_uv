@@ -87,11 +87,11 @@ class UvTask:
                 f.seek(-read_size, 1)
 
                 # 按行分割并过滤空行
-                chunk_lines = (chunk + left_content).split(b"\n")
+                chunk_lines = (chunk + left_content).splitlines()
                 if chunk_lines:
                     left_content = chunk_lines[0]
                     chunk_lines = chunk_lines[1:]
-                    chunk_lines = [v.decode("utf-8", errors="ignore") for v in reversed(chunk_lines)]
+                    chunk_lines = (v.decode("utf-8", errors="ignore") for v in reversed(chunk_lines))
                     lines.extend(chunk_lines)
 
             if remaining_bytes <= 0:

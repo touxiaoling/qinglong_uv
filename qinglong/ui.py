@@ -57,6 +57,9 @@ class MainPage:
             ui.button("run", on_click=self.run_task)
             ui.button("logs", on_click=self.show_task_logs)
 
+        with ui.dialog() as self.dialog, ui.card().style("max-width: none").classes("max-w-0.9"):
+            self.task_logs = ui.markdown()
+
     @property
     def project_selected_name(self):
         return self.project_table.selected[0]["name"]
@@ -123,11 +126,8 @@ class MainPage:
         task_name = self.task_selected_name
         task_logs = api.get_task_logs(task_name)
         task_logs = "\n".join(task_logs)
-        _logger.debug(f"task_logs: {task_logs}")
-        with ui.dialog() as dialog, ui.card().classes("max-w-[90vw]"):
-            result = ui.markdown()
-            result.content = f"```\n{task_logs}\n```"
-            dialog.open()
+        self.task_logs.content = f"```\n{task_logs}\n```"
+        self.dialog.open()
 
     def sync_task(self):
         ui.notify("syncing tasks...")
