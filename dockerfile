@@ -14,8 +14,8 @@ ENV TZ=Asia/Shanghai
 ENV UV_CACHE_DIR=/code/data/.cache/uv
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-COPY pyproject.toml uv.lock ./
-COPY ./qinglong ./qinglong
 RUN mkdir -p /code/data/.cache
 RUN /ffmpegwrapper.sh -version
+COPY pyproject.toml uv.lock ./
+COPY ./qinglong ./qinglong
 ENTRYPOINT ["uv" , "run","--no-dev" ,"-m", "qinglong"]
