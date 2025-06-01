@@ -91,4 +91,4 @@ class UvTask:
                 lines.extend(reversed(chunk_lines))
 
             # 返回最后 `limit` 行（并反转顺序，使最新的在前）
-            return list(reversed(lines))[-limit:]
+            return list(lines)[-limit:]
