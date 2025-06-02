@@ -28,8 +28,8 @@ class Scheduler:
         from sqlalchemy import create_engine, event
 
         def enable_wal(dbapi_conn, connection_record):
+            # 设置优化参数
             dbapi_conn.execute("PRAGMA journal_mode=WAL;")
-            # 推荐同时设置以下优化参数
             dbapi_conn.execute("PRAGMA synchronous=NORMAL;")
             dbapi_conn.execute("PRAGMA busy_timeout=5000;")  # 设置5秒超时
 
