@@ -31,6 +31,12 @@ class MainPage:
     def __init__(self):
         api.init_task()
 
+        with ui.dialog() as self.dialog2, ui.card():
+            ui.label("Are you sure you want to remove this project?")
+            with ui.row():
+                ui.button("OK", on_click=self.remove_project)
+                ui.button("CANCEL", on_click=self.dialog2.close)
+
         ui.label("Project")
         with ui.grid(columns=3):
             self.input_project_name = ui.input(label="name", placeholder="项目名称")
@@ -38,7 +44,7 @@ class MainPage:
         with ui.button_group():
             ui.button("pull", on_click=self.pull_project)
             ui.button("upgrade", on_click=self.upgrade_project)
-            ui.button("remove", on_click=self.remove_project)
+            ui.button("remove", on_click=self.dialog2.open)
         self.project_table = ui.table(columns=project_columns, rows=[], row_key="name", selection="single")
 
         ui.label("Task")
@@ -92,6 +98,7 @@ class MainPage:
         ui.notify(f"removing {self.project_selected_name}...")
         api.remove_project(self.project_selected_name)
         self.update_project_table()
+        self.dialog2.close()
 
     def set_task(self):
         name = self.input_task_name.value
