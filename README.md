@@ -22,6 +22,8 @@ web面板 使用nicegui实现
 
 支持api 自动重定向
 
+通过web配置config.toml文件
+
 通知
 
 # 问题

@@ -12,6 +12,7 @@ ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
 ENV TZ=Asia/Shanghai
 ENV UV_CACHE_DIR=/code/data/.cache/uv
+ENV UV_PYTHON_INSTALL_DIR=/code/data/.cache/python
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN mkdir -p /code/data/.cache
