@@ -21,7 +21,7 @@ task_columns = [
     {"name": "project_name", "label": "Project Name", "field": "project_name", "sortable": True},
     {"name": "status", "label": "Status", "field": "status", "sortable": True},
     {"name": "cron", "label": "Cron", "field": "cron", "sortable": True},
-    {"name": "cmd", "label": "Cmd", "field": "cmd", "sortable": True},
+    {"name": "cmd", "label": "Cmd", "field": "command", "sortable": True},
     {"name": "upgrade_at", "label": "Upgrade At", "field": "upgrade_at", "sortable": True},
     {"name": "created_at", "label": "Created At", "field": "created_at", "sortable": True},
 ]

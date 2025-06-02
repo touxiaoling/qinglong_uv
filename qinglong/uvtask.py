@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
-from datetime import datetime
 import logging
 import subprocess
 
+from .filelog import RotatingLogFile
 from .config import settings as cfg
 
 _logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class UvTask:
         self.uv_args = uv_args
         self.project_path = Path(project_path)
         self.max_log_size = max_log_size  # 日志文件最大大小（字节）
-        self.log_file = cfg.TASK_LOG_PATH / (self.name + ".log")
+        self.log_file = RotatingLogFile(cfg.TASK_LOG_PATH / (self.name + ".log"))
         _logger.info(f"uvtask log file: {self.log_file}")
 
     def run(self):
@@ -32,8 +32,6 @@ class UvTask:
         cmd = [v for v in cmd.split(" ") if v]
         _logger.info(f"uvtask command: {cmd}")
 
-        # 检查日志文件是否过大，如果超过限制则轮转
-        self._rotate_log_if_needed()
         if self.project_path.is_dir():
             task_env = self.project_path
         elif self.project_path.is_file():
@@ -43,57 +41,23 @@ class UvTask:
         # 移除虚拟环境相关变量
         env.pop("VIRTUAL_ENV", None)
         env.pop("PYTHONPATH", None)
+        env["PYTHONUNBUFFERED"] = "1"
         # 直接重定向 stdout 和 stderr 到日志文件
-        with self.log_file.open(mode="a", encoding="utf-8") as log_f:
-            subprocess.run(
+        with self.log_file as log_f:
+            with subprocess.Popen(
                 cmd,
                 cwd=task_env,
-                stdout=log_f,
-                stderr=log_f,  # 也可以单独重定向 stderr
                 env=env,
-            )
-        _logger.info(f"uvtask command end: {cmd}")
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            ) as proc:
+                while line := proc.stdout.readline():
+                    log_f.log(line.rstrip())
 
-    def _rotate_log_if_needed(self):
-        """如果日志文件过大，则进行轮转（重命名旧日志）"""
-        if self.log_file.exists():
-            file_size = self.log_file.stat().st_size
-            if file_size >= self.max_log_size:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                rotated_log = self.log_file.with_name(f"{self.log_file.name}.{timestamp}")
-                self.log_file.rename(rotated_log)
+                return_code = proc.wait()
+        _logger.info(f"uvtask command completed with exit code {return_code}: {cmd}")
 
-    def get_logs(self, limit: int = 1000) -> list[str]:
-        """返回倒序的日志（读取文件最后 `limit` 行）"""
-        lines = []
-        if not self.log_file.exists():
-            _logger.warning(f"Log file {self.log_file} does not exist.")
-            return lines
-
-        chunk_size = 4096  # 每次读取 4KB
-        # 使用反向读取文件的方式获取最后 N 行（高效方式）
-        with self.log_file.open("rb") as f:
-            # 移动到文件末尾
-            f.seek(0, 2)  # os.SEEK_END = 2
-            file_size = f.tell()
-            remaining_bytes = file_size
-            left_content = b""
-            while remaining_bytes > 0 and len(lines) < limit:
-                # 计算本次读取的字节数
-                read_size = min(chunk_size, remaining_bytes)
-                f.seek(-read_size, 1)  # os.SEEK_CUR = 1
-                chunk = f.read(read_size)
-                remaining_bytes -= read_size
-                f.seek(-read_size, 1)
-
-                # 按行分割并过滤空行
-                chunk_lines = (chunk + left_content).splitlines()
-                if chunk_lines:
-                    left_content = chunk_lines[0]
-                    chunk_lines = chunk_lines[1:]
-                    chunk_lines = (v.decode("utf-8", errors="ignore") for v in reversed(chunk_lines))
-                    lines.extend(chunk_lines)
-
-            if remaining_bytes <= 0:
-                lines.append(left_content.decode("utf-8", errors="ignore"))
-            return lines
+    def get_logs(self, limit: int = 1000):
+        return self.log_file.readlines(limit)

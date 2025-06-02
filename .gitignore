@@ -13,3 +13,4 @@ db/
 projects/
 docker-compose.override.yaml
 /data
+/*.log
