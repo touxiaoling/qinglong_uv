@@ -131,8 +131,7 @@ class MainPage:
 
     def show_task_logs(self):
         task_name = self.task_selected_name
-        task_logs = api.get_task_logs(task_name)
-        task_logs = "\n".join(task_logs)
+        task_logs = "\n".join(api.get_task_logs(task_name))
         self.task_logs.content = f"```\n{task_logs}\n```"
         self.dialog.open()
 

@@ -1,9 +1,11 @@
 from pathlib import Path
 from datetime import datetime
+from collections import deque
+from itertools import islice
 
 
 class RotatingLogFile:
-    def __init__(self, filename, max_size=1024 * 1024, backup_count=5, encoding="utf-8", mode="a"):
+    def __init__(self, filename, max_size=1024 * 1024, backup_count=5, encoding="utf-8", mode="a", buffer_lines=1000):
         """
         初始化日志文件类
 
@@ -19,11 +21,26 @@ class RotatingLogFile:
         self.backup_count = backup_count
         self.encoding = encoding
         self.mode = mode
+        self.buffer_lines = buffer_lines
 
         # 确保日志目录存在
         self.filename.parent.mkdir(exist_ok=True)
         # 打开日志文件
         self._file = None
+
+        self.buffer = deque(self._readlines(buffer_lines), maxlen=buffer_lines)
+
+    def _readlines(self, hint=1000):
+        lines = []
+        for i in range(self.backup_count + 1):
+            backup_file = self._backup_file(i)
+            if not backup_file.exists():
+                break
+            lines.extend(reversed(backup_file.read_text(encoding=self.encoding).splitlines()))
+            if len(lines) >= hint:
+                break
+
+        return lines[:hint]
 
     def _should_rotate(self):
         """检查是否需要轮转日志"""
@@ -75,25 +92,17 @@ class RotatingLogFile:
         elif self._file is None or self._file.closed:
             self._file = self._open_file()
 
-        self._file.write(message)
+        self.buffer.appendleft(message)
+        self._file.write(message + "\n")
 
-    def readlines(self, hint=1000):
-        lines = []
-        for i in range(self.backup_count + 1):
-            backup_file = self._backup_file(i)
-            if not backup_file.exists():
-                break
-            lines.extend(reversed(backup_file.read_text(encoding=self.encoding).splitlines()))
-            if len(lines) >= hint:
-                break
-
-        return lines[:hint]
+    def readlines(self, limit=1000):
+        return islice(self.buffer, limit)
 
     def flush(self):
         """刷新文件缓冲区"""
         self._file.flush()
 
-    def log(self, message, level="INFO"):
+    def log(self, message: str, level="INFO"):
         """
         写入带格式的日志消息
 
@@ -102,10 +111,11 @@ class RotatingLogFile:
             level (str): 日志级别
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        message = message.rstrip()
         if timestamp in message:
-            log_entry = f"{message}\n"
+            log_entry = f"{message}"
         else:
-            log_entry = f"[{timestamp}]: {message}\n"
+            log_entry = f"[{timestamp}]: {message}"
         self.write(log_entry)
 
     def close(self):

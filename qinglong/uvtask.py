@@ -54,7 +54,7 @@ class UvTask:
                 bufsize=1,
             ) as proc:
                 while line := proc.stdout.readline():
-                    log_f.log(line.rstrip())
+                    log_f.log(line)
 
                 return_code = proc.wait()
         _logger.info(f"uvtask command completed with exit code {return_code}: {cmd}")

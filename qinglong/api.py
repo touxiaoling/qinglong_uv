@@ -11,6 +11,7 @@ from .uvtask import UvTask
 from . import errors
 
 _logger = logging.getLogger(__name__)
+task_dict: dict[str, UvTask] = {}
 
 
 def list_projects():
@@ -112,6 +113,7 @@ def set_task(name: str, project_name: str, cron: str, cmd: str):
         )
 
     task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path)
+    task_dict[name] = task
 
     scheduler.add_job(func=task.run, trigger=task_info.cron, job_id=name)
 
@@ -124,6 +126,7 @@ def remove_task(task_name: str):
 
     scheduler.remove_job(task_name)
 
+    del task_dict[task_name]
     del task_db[task_name]
 
 
@@ -162,9 +165,7 @@ def run_task(task_name: str):
 def get_task_logs(task_name: str, limit: int = 1000):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
-    task_info: TaskInfo = task_db[task_name]
-    project_info: ProjectInfo = project_db[task_info.project_name]
-    task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path)
+    task: UvTask = task_dict.get(task_name)
     return task.get_logs(limit=limit)
 
 
@@ -181,6 +182,7 @@ def init_task():
             continue
         project_info: ProjectInfo = project_db[task_info.project_name]
         task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path)
+        task_dict[task_name] = task
         scheduler.add_job(
             func=task.run, trigger=task_info.cron, job_id=task_name, paused=(task_info.status == TaskStatus.PAUSED)
         )

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # 任务日志路径
     TASK_LOG_PATH: Path = Path("./data/log")
     # 任务日志最大大小
-    TASK_LOG_MAX_BYTES: int = 1024 * 1024 * 10
+    TASK_LOG_MAX_BYTES: int = 1024 * 1024
     # 任务日志备份数量
     TASK_LOG_BACKUP_COUNT: int = 5
     DEBUG: bool = True
