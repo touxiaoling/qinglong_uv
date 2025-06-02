@@ -102,7 +102,10 @@ class RotatingLogFile:
             level (str): 日志级别
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"[{timestamp}]: {message}\n"
+        if timestamp in message:
+            log_entry = f"{message}\n"
+        else:
+            log_entry = f"[{timestamp}]: {message}\n"
         self.write(log_entry)
 
     def close(self):
