@@ -16,13 +16,13 @@ web面板 使用nicegui实现
 
 查询运行日志
 
+通过web配置`config.*`文件
+
 # 待开发功能
 
 自动更新git项目（定时更新，或者支持webhook更新）
 
 支持api 自动重定向
-
-通过web配置config.toml文件
 
 通知
 
