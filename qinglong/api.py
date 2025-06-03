@@ -24,7 +24,7 @@ def list_tasks():
     return tasks
 
 
-def pull_project(url: str, name: str = None):
+def clone_project(url: str, name: str = None):
     project_name = name if name else url.split("/")[-1]
 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -51,12 +51,12 @@ def pull_project(url: str, name: str = None):
     project_db[project_name] = project_info
 
 
-def upgrade_project(project_name: str):
+def pull_project(project_name: str):
     project_info: ProjectInfo = project_db.get(project_name)
     if not project_info:
         raise errors.ProjectNotFoundError(project_name)
 
-    pull_project(
+    clone_project(
         url=project_info.url,
         name=project_info.name,
     )

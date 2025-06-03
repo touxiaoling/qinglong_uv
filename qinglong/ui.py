@@ -42,8 +42,8 @@ class MainPage:
             self.input_project_name = ui.input(label="name", placeholder="项目名称")
             self.input_project_url = ui.input(label="url", placeholder="项目路径")
         with ui.button_group():
+            ui.button("clone", on_click=self.clone_project)
             ui.button("pull", on_click=self.pull_project)
-            ui.button("upgrade", on_click=self.upgrade_project)
             ui.button("remove", on_click=self.dialog2.open)
         self.project_table = ui.table(columns=project_columns, rows=[], row_key="name", selection="single")
 
@@ -82,16 +82,16 @@ class MainPage:
         tasks = api.list_tasks()
         self.task_table.update_rows(tasks)
 
-    def pull_project(self):
+    def clone_project(self):
         name = self.input_project_name.value
         url = self.input_project_url.value
-        ui.notify(f"pulling {name}:{url}...")
-        api.pull_project(url, name)
+        ui.notify(f"cloning {name}:{url}...")
+        api.clone_project(url, name)
         self.update_project_table()
 
-    def upgrade_project(self):
-        ui.notify(f"upgrading {self.project_selected_name}...")
-        api.upgrade_project(self.project_selected_name)
+    def pull_project(self):
+        ui.notify(f"pulling {self.project_selected_name}...")
+        api.pull_project(self.project_selected_name)
         self.update_project_table()
 
     def remove_project(self):
