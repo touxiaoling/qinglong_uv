@@ -4,7 +4,6 @@ import tomllib
 
 import yaml
 
-from .config import settings as cfg
 from . import api
 
 
