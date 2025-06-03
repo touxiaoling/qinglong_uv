@@ -1,6 +1,7 @@
 from datetime import datetime
 import shutil
 import logging
+from pathlib import Path
 
 from .config import settings as cfg
 from .data_struct import ProjectInfo, TaskInfo, TaskStatus
@@ -83,6 +84,14 @@ def remove_project(project_name: str):
         raise errors.ProjectNotFoundError(project_name)
 
     del project_db[project_name]
+
+
+def get_project_config(project_name: str):
+    project_info: ProjectInfo = project_db.get(project_name)
+    project_path = Path(project_info.project_path)
+    for config_file in project_path.glob("config.*"):
+        return config_file
+    return project_path / "config.toml"
 
 
 def set_task(name: str, project_name: str, cron: str, cmd: str):

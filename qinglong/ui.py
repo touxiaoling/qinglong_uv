@@ -1,5 +1,8 @@
 import logging
 from nicegui import ui
+import tomllib
+
+import yaml
 
 from .config import settings as cfg
 from . import api
@@ -37,18 +40,26 @@ class MainPage:
                 ui.button("OK", on_click=self.remove_project)
                 ui.button("CANCEL", on_click=self.dialog2.close)
 
+        with ui.dialog() as self.dialog_config, ui.card().style("max-width: none").classes("min-w-[50%]"):
+            ui.label("Project Config")
+            self.editor = ui.codemirror("", language="toml", theme="vscodeDark")
+            with ui.button_group():
+                ui.button("save", on_click=self.save_project_config)
+                ui.button("cancel", on_click=self.dialog_config.close)
+
         ui.label("Project")
-        with ui.grid(columns=3):
+        with ui.row():
             self.input_project_name = ui.input(label="name", placeholder="项目名称")
             self.input_project_url = ui.input(label="url", placeholder="项目路径")
         with ui.button_group():
             ui.button("clone", on_click=self.clone_project)
             ui.button("pull", on_click=self.pull_project)
             ui.button("remove", on_click=self.dialog2.open)
+            ui.button("config", on_click=self.start_config_project)
         self.project_table = ui.table(columns=project_columns, rows=[], row_key="name", selection="single")
 
         ui.label("Task")
-        with ui.grid(columns=3):
+        with ui.row():
             self.input_task_name = ui.input(label="name", placeholder="任务名称")
             self.input_task_cron = ui.input(label="cron", placeholder="cron")
             self.input_task_cmd = ui.input(label="cmd", placeholder="cmd")
@@ -63,7 +74,7 @@ class MainPage:
             ui.button("run", on_click=self.run_task)
             ui.button("logs", on_click=self.show_task_logs)
 
-        with ui.dialog() as self.dialog, ui.card().style("max-width: none").classes("max-w-0.9"):
+        with ui.dialog() as self.dialog, ui.card().style("max-width: none"):
             self.task_logs = ui.markdown()
 
     @property
@@ -99,6 +110,42 @@ class MainPage:
         api.remove_project(self.project_selected_name)
         self.update_project_table()
         self.dialog2.close()
+
+    def start_config_project(self):
+        config_file = api.get_project_config(self.project_selected_name)
+        if config_file is None:
+            ui.notify("config file not found")
+            return
+
+        self.editor.language = config_file.suffix[1:]
+        self.editor.value = config_file.read_text()
+        self.dialog_config.open()
+
+    def save_project_config(self):
+        config_file = api.get_project_config(self.project_selected_name)
+        if config_file is None:
+            ui.notify("config file not found")
+            return
+        language = self.editor.language
+        content = self.editor.value
+        if language == "toml":
+            try:
+                tomllib.loads(content)
+            except Exception as e:
+                ui.notify(f"invalid toml: {e}")
+                return
+        elif language == "yaml":
+            try:
+                yaml.safe_load(content)
+            except Exception as e:
+                ui.notify(f"invalid yaml: {e}")
+                return
+        else:
+            ui.notify(f"invalid language: {language}")
+            return
+
+        config_file.write_text(content)
+        self.dialog_config.close()
 
     def set_task(self):
         name = self.input_task_name.value

@@ -1029,6 +1029,7 @@ dependencies = [
     { name = "httpx", extra = ["http2"] },
     { name = "nicegui" },
     { name = "pydantic-settings" },
+    { name = "pyyaml" },
     { name = "shelvez" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1050,6 +1051,7 @@ requires-dist = [
     { name = "httpx", extras = ["http2"], specifier = ">=0.28.1" },
     { name = "nicegui", specifier = ">=2.18.0" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "shelvez", specifier = ">=0.2.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
