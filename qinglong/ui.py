@@ -40,9 +40,9 @@ class MainPage:
                 ui.button("OK", on_click=self.remove_project)
                 ui.button("CANCEL", on_click=self.dialog2.close)
 
-        with ui.dialog() as self.dialog_config, ui.card().style("max-width: none").classes("min-w-[50%]"):
-            ui.label("Project Config")
-            self.editor = ui.codemirror("", language="toml", theme="vscodeDark")
+        with ui.dialog() as self.dialog_config, ui.card().style("max-width: none").classes("min-w-[50%] min-h-[100%]"):
+            self.editor_label = ui.label("Project Config")
+            self.editor = ui.codemirror("", language="toml", theme="vscodeDark").classes("flex-grow")
             with ui.button_group():
                 ui.button("save", on_click=self.save_project_config)
                 ui.button("cancel", on_click=self.dialog_config.close)
@@ -119,6 +119,7 @@ class MainPage:
 
         self.editor.language = config_file.suffix[1:]
         self.editor.value = config_file.read_text()
+        self.editor_label.set_text(f"Project Config: {config_file.name}")
         self.dialog_config.open()
 
     def save_project_config(self):
