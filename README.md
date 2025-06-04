@@ -25,7 +25,7 @@ A Qinglong-like panel for managing Python tasks using uv package manager, curren
 - 支持实时查看任务状态和日志 | Real-time task status and log viewing
 
 ## 系统要求 | System Requirements
-- Python 3.8+
+- Python 3.12+
 - uv包管理器 | uv package manager
 - Git
 
