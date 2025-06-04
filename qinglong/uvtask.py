@@ -5,6 +5,7 @@ import subprocess
 
 from .filelog import RotatingLogFile
 from .config import settings as cfg
+from . import errors
 
 _logger = logging.getLogger(__name__)
 
@@ -24,7 +25,18 @@ class UvTask:
         self.project_path = Path(project_path)
         self.max_log_size = max_log_size  # 日志文件最大大小（字节）
         self.log_file = RotatingLogFile(cfg.TASK_LOG_PATH / (self.name + ".log"))
+        self._process = None  # 添加进程属性
         _logger.info(f"uvtask log file: {self.log_file}")
+
+    @property
+    def is_running(self) -> bool:
+        """检查进程是否正在运行
+        Returns:
+            bool: 如果进程正在运行返回True，否则返回False
+        """
+        if self._process is None:
+            return False
+        return self._process.poll() is None
 
     def run(self):
         """运行命令，并将 stdout 和 stderr 直接写入日志文件"""
@@ -44,7 +56,7 @@ class UvTask:
         env["PYTHONUNBUFFERED"] = "1"
         # 直接重定向 stdout 和 stderr 到日志文件
         with self.log_file as log_f:
-            with subprocess.Popen(
+            self._process = subprocess.Popen(
                 cmd,
                 cwd=task_env,
                 env=env,
@@ -52,12 +64,32 @@ class UvTask:
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-            ) as proc:
-                while line := proc.stdout.readline():
+            )
+            try:
+                while line := self._process.stdout.readline():
                     log_f.log(line)
 
-                return_code = proc.wait()
+                return_code = self._process.wait()
+            finally:
+                self._process = None
         _logger.info(f"uvtask command completed with exit code {return_code}: {cmd}")
+
+    def kill(self):
+        """终止正在运行的进程"""
+        if self._process is None:
+            raise errors.TaskNotRunningError(self.name)
+
+        try:
+            self._process.terminate()
+            self._process.wait(timeout=5)  # 等待进程终止
+            _logger.info(f"Successfully terminated process for task: {self.name}")
+        except subprocess.TimeoutExpired:
+            self._process.kill()  # 如果进程没有及时终止，强制结束
+            _logger.warning(f"Force killed process for task: {self.name}")
+        except Exception as e:
+            _logger.error(f"Error while killing process for task {self.name}: {e}")
+        finally:
+            self._process = None
 
     def get_logs(self, limit: int = 1000):
         return self.log_file.readlines(limit)

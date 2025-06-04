@@ -58,16 +58,16 @@ class MainPage:
 
     def _init_dialogs(self) -> None:
         """初始化所有对话框"""
-        with ui.dialog() as self.dialog, ui.card().style("max-width: none"):
+        with ui.dialog() as self.dialog_log, ui.card().style("max-width: none"):
             # 任务日志
             self.task_logs = ui.markdown()
 
-        with ui.dialog() as self.dialog2, ui.card():
+        with ui.dialog() as self.dialog_yesno, ui.card():
             # 删除项目确认
-            ui.label("Are you sure you want to remove this project?")
+            self.yesno_label = ui.label()
             with ui.row():
-                ui.button("OK", on_click=self.remove_project)
-                ui.button("CANCEL", on_click=self.dialog2.close)
+                self.ok_button = ui.button("OK")
+                ui.button("CANCEL", on_click=self.dialog_yesno.close)
 
         with ui.dialog() as self.dialog_config, ui.card().style("max-width: none").classes(DIALOG_WIDTH):
             # 项目配置
@@ -77,33 +77,52 @@ class MainPage:
                 ui.button("Save", on_click=self.save_project_config)
                 ui.button("Cancel", on_click=self.dialog_config.close)
 
-    def _init_ui(self) -> None:
-        """初始化主界面"""
-        ui.label("Project")
-        with ui.row():
+        with ui.dialog() as self.dialog_clone, ui.card():
+            # 克隆项目对话框
+            ui.label("Clone Project")
             self.input_project_name = ui.input(label="Name", placeholder="Project Name")
             self.input_project_url = ui.input(label="URL", placeholder="Project URL")
-        with ui.button_group():
-            ui.button("Clone", on_click=self.clone_project)
-            ui.button("Pull", on_click=self.pull_project)
-            ui.button("Remove", on_click=self.dialog2.open)
-            ui.button("Config", on_click=self.start_config_project)
-        self.project_table = ui.table(columns=PROJECT_COLUMNS, rows=[], row_key="name", selection="single")
+            with ui.row():
+                self.clone_spinner = ui.spinner(size="lg").style("display: none")
+                self.clone_status = ui.label().style("display: none")
+            with ui.row():
+                self.clone_button = ui.button("Clone", on_click=self.clone_project)
+                ui.button("Cancel", on_click=self.dialog_clone.close)
 
-        ui.label("Task")
-        with ui.row():
+        with ui.dialog() as self.dialog_pull, ui.card():
+            # 拉取项目对话框
+            with ui.row():
+                self.pull_spinner = ui.spinner(size="lg").style("display: none")
+                self.pull_status = ui.label().style("display: none")
+
+        with ui.dialog() as self.dialog_task, ui.card():
+            # 任务设置对话框
+            ui.label("Set Task")
             self.input_task_name = ui.input(label="Name", placeholder="Task Name")
             self.input_task_cron = ui.input(label="Cron", placeholder="Cron Expression")
             self.input_task_cmd = ui.input(label="Command", placeholder="Command")
+            with ui.row():
+                ui.button("Set", on_click=self.set_task)
+                ui.button("Cancel", on_click=self.dialog_task.close)
+
+    def _init_ui(self) -> None:
+        """初始化主界面"""
         with ui.button_group():
-            ui.button("Set", on_click=self.set_task)
+            ui.button("Clone", on_click=self.dialog_clone.open)
+            ui.button("Pull", on_click=self.pull_project)
+            ui.button("Remove", on_click=self.start_remove_project)
+            ui.button("Config", on_click=self.start_config_project)
+        self.project_table = ui.table(columns=PROJECT_COLUMNS, rows=[], row_key="name", selection="single", title="Project")
+        with ui.button_group():
+            ui.button("Set", on_click=self.start_set_task)
             ui.button("Remove", on_click=self.remove_task)
             ui.button("Sync", on_click=self.sync_task)
-        self.task_table = ui.table(columns=TASK_COLUMNS, rows=[], row_key="name", selection="single")
+        self.task_table = ui.table(columns=TASK_COLUMNS, rows=[], row_key="name", selection="single", title="Task")
         with ui.button_group():
             ui.button("Start", on_click=self.start_task)
             ui.button("Pause", on_click=self.pause_task)
             ui.button("Run", on_click=self.run_task)
+            ui.button("Kill", on_click=self.start_kill_task)
             ui.button("Logs", on_click=self.show_task_logs)
 
     @property
@@ -140,16 +159,67 @@ class MainPage:
         if not url:
             ui.notify("Please fill in project URL", type="warning")
             return
-        ui.notify(f"Cloning {name}:{url}...")
-        api.clone_project(url, name)
-        self.update_project_table()
+
+        # 显示加载动画和状态
+        self.clone_spinner.style("display: block")
+        self.clone_status.style("display: block")
+        self.clone_status.set_text(f"Cloning {name}:{url}...")
+        self.clone_button.disable()
+
+        try:
+            # 使用 ui.timer 来确保 UI 更新
+            def do_clone():
+                try:
+                    api.clone_project(url, name)
+                    self.update_project_table()
+                    self.dialog_clone.close()
+                    ui.notify("Project cloned successfully", type="positive")
+                except Exception as e:
+                    ui.notify(f"Failed to clone project: {e}", type="negative")
+                finally:
+                    # 隐藏加载动画和状态
+                    self.clone_spinner.style("display: none")
+                    self.clone_status.style("display: none")
+                    self.clone_button.enable()
+
+            # 使用 timer 来异步执行克隆操作
+            ui.timer(0.1, do_clone, once=True)
+        except Exception as e:
+            _logger.error(f"克隆项目失败: {e}")
+            ui.notify(f"克隆项目失败: {e}", type="negative")
 
     @error_handler
     def pull_project(self) -> None:
         """拉取项目更新"""
-        ui.notify(f"Pulling {self.project_selected_name}...")
-        api.pull_project(self.project_selected_name)
-        self.update_project_table()
+        try:
+            project_name = self.project_selected_name
+            self.dialog_pull.open()
+            self.pull_spinner.style("display: block")
+            self.pull_status.style("display: block")
+            self.pull_status.set_text(f"Project Pulling: {project_name}...")
+
+            def do_pull():
+                try:
+                    api.pull_project(project_name)
+                    self.update_project_table()
+                    self.dialog_pull.close()
+                    ui.notify("Project pulled successfully", type="positive")
+                except Exception as e:
+                    ui.notify(f"Failed to pull project: {e}", type="negative")
+                finally:
+                    self.pull_spinner.style("display: none")
+                    self.pull_status.style("display: none")
+
+            ui.timer(0.1, do_pull, once=True)
+        except ValueError as e:
+            ui.notify(str(e), type="warning")
+
+    @error_handler
+    def start_remove_project(self) -> None:
+        """开始删除项目"""
+        self.yesno_label.set_text(f"Are you sure you want to remove {self.project_selected_name}?")
+        self.ok_button.on_click(self.remove_project)
+        self.dialog_yesno.open()
 
     @error_handler
     def remove_project(self) -> None:
@@ -157,7 +227,9 @@ class MainPage:
         ui.notify(f"Removing {self.project_selected_name}...")
         api.remove_project(self.project_selected_name)
         self.update_project_table()
-        self.dialog2.close()
+        self.dialog_yesno.close()
+        self.ok_button.on_click(None)
+        self.yesno_label.set_text("")
 
     @error_handler
     def start_config_project(self) -> None:
@@ -205,6 +277,12 @@ class MainPage:
         ui.notify("Config saved successfully", type="positive")
 
     @error_handler
+    def start_set_task(self) -> None:
+        """开始设置任务"""
+        project_name = self.project_selected_name
+        self.dialog_task.open()
+
+    @error_handler
     def set_task(self) -> None:
         """设置任务"""
         name = self.input_task_name.value
@@ -219,6 +297,7 @@ class MainPage:
         ui.notify(f"Setting {name}...")
         api.set_task(name, project_name, cron, cmd)
         self.update_task_table()
+        self.dialog_task.close()
 
     @error_handler
     def remove_task(self) -> None:
@@ -254,7 +333,24 @@ class MainPage:
         task_name = self.task_selected_name
         task_logs = "\n".join(api.get_task_logs(task_name))
         self.task_logs.content = f"```\n{task_logs}\n```"
-        self.dialog.open()
+        self.dialog_log.open()
+
+    @error_handler
+    def start_kill_task(self) -> None:
+        """开始终止任务确认"""
+        self.yesno_label.set_text(f"Are you sure you want to kill task {self.task_selected_name}?")
+        self.ok_button.on_click(self.kill_task)
+        self.dialog_yesno.open()
+
+    @error_handler
+    def kill_task(self) -> None:
+        """终止任务"""
+        ui.notify(f"Killing {self.task_selected_name}...")
+        api.kill_task(self.task_selected_name)
+        self.update_task_table()
+        self.dialog_yesno.close()
+        self.ok_button.on_click(None)
+        self.yesno_label.set_text("")
 
     @error_handler
     def sync_task(self) -> None:

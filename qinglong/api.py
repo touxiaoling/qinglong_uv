@@ -171,6 +171,15 @@ def run_task(task_name: str):
     return task_info
 
 
+def kill_task(task_name: str):
+    if task_name not in task_db:
+        raise errors.TaskNotFoundError(task_name)
+    task: UvTask = task_dict.get(task_name)
+    if not task.is_running:
+        raise errors.TaskNotRunningError(task_name)
+    task.kill()
+
+
 def get_task_logs(task_name: str, limit: int = 1000):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)

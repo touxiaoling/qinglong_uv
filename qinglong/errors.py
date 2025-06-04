@@ -41,3 +41,14 @@ class TaskNotFoundError(TaskError):
 
     def __str__(self):
         return f"Task '{self.task_name}' not found."
+
+
+class TaskNotRunningError(TaskError):
+    """Raised when a task is not running."""
+
+    def __init__(self, task_name: str):
+        super().__init__(f"Task '{task_name}' is not running.")
+        self.task_name = task_name
+
+    def __str__(self):
+        return f"Task '{self.task_name}' is not running."
