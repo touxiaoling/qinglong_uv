@@ -26,12 +26,15 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
 ]
 
-[tool.uv]
-no-binary-package = ["av"]
-package = true
+[dependency-groups]
+dev = ["jurigged>=0.6.0", "pytest>=8.3.5", "pywebview>=5.4"]
 
 [tool.setuptools]
 packages = ["qinglong"]
+
+[tool.uv]
+no-binary-package = ["av"]
+package = true
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -71,6 +74,3 @@ exclude = [
 
 [tool.ruff.lint]
 ignore = ["F401"]
-
-[dependency-groups]
-dev = ["jurigged>=0.6.0", "pytest>=8.3.5", "pywebview>=5.4"]
