@@ -1,6 +1,8 @@
 import logging
-from nicegui import ui
 import tomllib
+from functools import wraps
+
+from nicegui import ui
 import yaml
 
 from . import api
@@ -30,6 +32,18 @@ TASK_COLUMNS = [
     {"name": "upgrade_at", "label": "Upgrade At", "field": "upgrade_at", "sortable": True},
     {"name": "created_at", "label": "Created At", "field": "created_at", "sortable": True},
 ]
+
+
+def error_handler(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            _logger.error(f"{func.__name__} failed: {e}")
+            ui.notify(f"Operation failed: {e}", type="negative")
+
+    return wrapper
 
 
 class MainPage:
@@ -106,197 +120,152 @@ class MainPage:
             raise ValueError("No task selected")
         return self.task_table.selected[0]["name"]
 
+    @error_handler
     def update_project_table(self) -> None:
         """更新项目表格"""
-        try:
-            projects = api.list_projects()
-            self.project_table.update_rows(projects)
-        except Exception as e:
-            _logger.error(f"更新项目表格失败: {e}")
-            ui.notify("Failed to update project table", type="negative")
+        projects = api.list_projects()
+        self.project_table.update_rows(projects)
 
+    @error_handler
     def update_task_table(self) -> None:
         """更新任务表格"""
-        try:
-            tasks = api.list_tasks()
-            self.task_table.update_rows(tasks)
-        except Exception as e:
-            _logger.error(f"更新任务表格失败: {e}")
-            ui.notify("Failed to update task table", type="negative")
+        tasks = api.list_tasks()
+        self.task_table.update_rows(tasks)
 
+    @error_handler
     def clone_project(self) -> None:
         """克隆项目"""
-        try:
-            name = self.input_project_name.value
-            url = self.input_project_url.value
-            if not url:
-                ui.notify("Please fill in project URL", type="warning")
-                return
-            ui.notify(f"Cloning {name}:{url}...")
-            api.clone_project(url, name)
-            self.update_project_table()
-        except Exception as e:
-            _logger.error(f"克隆项目失败: {e}")
-            ui.notify(f"Failed to clone project: {e}", type="negative")
+        name = self.input_project_name.value
+        url = self.input_project_url.value
+        if not url:
+            ui.notify("Please fill in project URL", type="warning")
+            return
+        ui.notify(f"Cloning {name}:{url}...")
+        api.clone_project(url, name)
+        self.update_project_table()
 
+    @error_handler
     def pull_project(self) -> None:
         """拉取项目更新"""
-        try:
-            ui.notify(f"Pulling {self.project_selected_name}...")
-            api.pull_project(self.project_selected_name)
-            self.update_project_table()
-        except Exception as e:
-            _logger.error(f"拉取项目失败: {e}")
-            ui.notify(f"Failed to pull project: {e}", type="negative")
+        ui.notify(f"Pulling {self.project_selected_name}...")
+        api.pull_project(self.project_selected_name)
+        self.update_project_table()
 
+    @error_handler
     def remove_project(self) -> None:
         """删除项目"""
-        try:
-            ui.notify(f"Removing {self.project_selected_name}...")
-            api.remove_project(self.project_selected_name)
-            self.update_project_table()
-            self.dialog2.close()
-        except Exception as e:
-            _logger.error(f"删除项目失败: {e}")
-            ui.notify(f"Failed to remove project: {e}", type="negative")
+        ui.notify(f"Removing {self.project_selected_name}...")
+        api.remove_project(self.project_selected_name)
+        self.update_project_table()
+        self.dialog2.close()
 
+    @error_handler
     def start_config_project(self) -> None:
         """开始配置项目"""
-        try:
-            config_file = api.get_project_config(self.project_selected_name)
-            if config_file is None:
-                ui.notify("Config file not found", type="warning")
-                return
+        config_file = api.get_project_config(self.project_selected_name)
+        if config_file is None:
+            ui.notify("Config file not found", type="warning")
+            return
 
-            self.editor.language = config_file.suffix[1:]
-            self.editor.value = config_file.read_text()
-            self.editor_label.set_text(f"Project Config: {config_file.name}")
-            self.dialog_config.open()
-        except Exception as e:
-            _logger.error(f"打开项目配置失败: {e}")
-            ui.notify(f"Failed to open project config: {e}", type="negative")
+        self.editor.language = config_file.suffix[1:]
+        self.editor.value = config_file.read_text()
+        self.editor_label.set_text(f"Project Config: {config_file.name}")
+        self.dialog_config.open()
 
+    @error_handler
     def save_project_config(self) -> None:
         """保存项目配置"""
-        try:
-            config_file = api.get_project_config(self.project_selected_name)
-            if config_file is None:
-                ui.notify("Config file not found", type="warning")
+        config_file = api.get_project_config(self.project_selected_name)
+        if config_file is None:
+            ui.notify("Config file not found", type="warning")
+            return
+
+        language = self.editor.language
+        content = self.editor.value
+
+        # 验证配置文件格式
+        if language == "toml":
+            try:
+                tomllib.loads(content)
+            except Exception as e:
+                ui.notify(f"Invalid TOML format: {e}", type="negative")
                 return
-
-            language = self.editor.language
-            content = self.editor.value
-
-            # 验证配置文件格式
-            if language == "toml":
-                try:
-                    tomllib.loads(content)
-                except Exception as e:
-                    ui.notify(f"Invalid TOML format: {e}", type="negative")
-                    return
-            elif language == "yaml":
-                try:
-                    yaml.safe_load(content)
-                except Exception as e:
-                    ui.notify(f"Invalid YAML format: {e}", type="negative")
-                    return
-            else:
-                ui.notify(f"Unsupported language: {language}", type="negative")
+        elif language == "yaml":
+            try:
+                yaml.safe_load(content)
+            except Exception as e:
+                ui.notify(f"Invalid YAML format: {e}", type="negative")
                 return
+        else:
+            ui.notify(f"Unsupported language: {language}", type="negative")
+            return
 
-            config_file.write_text(content)
-            self.dialog_config.close()
-            ui.notify("Config saved successfully", type="positive")
-        except Exception as e:
-            _logger.error(f"保存项目配置失败: {e}")
-            ui.notify(f"Failed to save project config: {e}", type="negative")
+        config_file.write_text(content)
+        self.dialog_config.close()
+        ui.notify("Config saved successfully", type="positive")
 
+    @error_handler
     def set_task(self) -> None:
         """设置任务"""
-        try:
-            name = self.input_task_name.value
-            project_name = self.project_selected_name
-            cron = self.input_task_cron.value
-            cmd = self.input_task_cmd.value
+        name = self.input_task_name.value
+        project_name = self.project_selected_name
+        cron = self.input_task_cron.value
+        cmd = self.input_task_cmd.value
 
-            if not all([name, project_name, cron, cmd]):
-                ui.notify("Please fill in all required fields", type="warning")
-                return
+        if not all([name, project_name, cron, cmd]):
+            ui.notify("Please fill in all required fields", type="warning")
+            return
 
-            ui.notify(f"Setting {name}...")
-            api.set_task(name, project_name, cron, cmd)
-            self.update_task_table()
-        except Exception as e:
-            _logger.error(f"设置任务失败: {e}")
-            ui.notify(f"Failed to set task: {e}", type="negative")
+        ui.notify(f"Setting {name}...")
+        api.set_task(name, project_name, cron, cmd)
+        self.update_task_table()
 
+    @error_handler
     def remove_task(self) -> None:
         """删除任务"""
-        try:
-            ui.notify(f"Removing {self.task_selected_name}...")
-            api.remove_task(self.task_selected_name)
-            self.update_task_table()
-        except Exception as e:
-            _logger.error(f"删除任务失败: {e}")
-            ui.notify(f"Failed to remove task: {e}", type="negative")
+        ui.notify(f"Removing {self.task_selected_name}...")
+        api.remove_task(self.task_selected_name)
+        self.update_task_table()
 
+    @error_handler
     def start_task(self) -> None:
         """启动任务"""
-        try:
-            ui.notify(f"Starting {self.task_selected_name}...")
-            api.start_task(self.task_selected_name)
-            self.update_task_table()
-        except Exception as e:
-            _logger.error(f"启动任务失败: {e}")
-            ui.notify(f"Failed to start task: {e}", type="negative")
+        ui.notify(f"Starting {self.task_selected_name}...")
+        api.start_task(self.task_selected_name)
+        self.update_task_table()
 
+    @error_handler
     def pause_task(self) -> None:
         """暂停任务"""
-        try:
-            ui.notify(f"Pausing {self.task_selected_name}...")
-            api.pause_task(self.task_selected_name)
-            self.update_task_table()
-        except Exception as e:
-            _logger.error(f"暂停任务失败: {e}")
-            ui.notify(f"Failed to pause task: {e}", type="negative")
+        ui.notify(f"Pausing {self.task_selected_name}...")
+        api.pause_task(self.task_selected_name)
+        self.update_task_table()
 
+    @error_handler
     def run_task(self) -> None:
         """运行任务"""
-        try:
-            ui.notify(f"Running {self.task_selected_name}...")
-            api.run_task(self.task_selected_name)
-            self.update_task_table()
-        except Exception as e:
-            _logger.error(f"运行任务失败: {e}")
-            ui.notify(f"Failed to run task: {e}", type="negative")
+        ui.notify(f"Running {self.task_selected_name}...")
+        api.run_task(self.task_selected_name)
+        self.update_task_table()
 
+    @error_handler
     def show_task_logs(self) -> None:
         """显示任务日志"""
-        try:
-            task_name = self.task_selected_name
-            task_logs = "\n".join(api.get_task_logs(task_name))
-            self.task_logs.content = f"```\n{task_logs}\n```"
-            self.dialog.open()
-        except Exception as e:
-            _logger.error(f"显示任务日志失败: {e}")
-            ui.notify(f"Failed to show task logs: {e}", type="negative")
+        task_name = self.task_selected_name
+        task_logs = "\n".join(api.get_task_logs(task_name))
+        self.task_logs.content = f"```\n{task_logs}\n```"
+        self.dialog.open()
 
+    @error_handler
     def sync_task(self) -> None:
         """同步任务"""
-        try:
-            ui.notify("Syncing tasks...")
-            api.sync_task()
-            self.update_task_table()
-        except Exception as e:
-            _logger.error(f"同步任务失败: {e}")
-            ui.notify(f"Failed to sync tasks: {e}", type="negative")
+        ui.notify("Syncing tasks...")
+        api.sync_task()
+        self.update_task_table()
 
+    @error_handler
     def start(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, debug: bool = False) -> None:
         """启动应用"""
-        try:
-            self.update_project_table()
-            self.update_task_table()
-            ui.run(host=host, port=port, title="Qinglong", dark=None, reload=debug, show=debug, uvicorn_reload_dirs="qinglong")
-        except Exception as e:
-            _logger.error(f"启动应用失败: {e}")
-            raise
+        self.update_project_table()
+        self.update_task_table()
+        ui.run(host=host, port=port, title="Qinglong", dark=None, reload=debug, show=debug, uvicorn_reload_dirs="qinglong")
