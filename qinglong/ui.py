@@ -342,15 +342,17 @@ class MainPage:
     @error_handler
     def start_kill_task(self) -> None:
         """开始终止任务确认"""
-        self.yesno_label.set_text(f"Are you sure you want to kill task {self.task_selected_name}?")
+        task_name = self.task_selected_name
+        self.yesno_label.set_text(f"Are you sure you want to kill task {task_name}?")
         self.ok_button.on_click(self.kill_task)
         self.dialog_yesno.open()
 
     @error_handler
     def kill_task(self) -> None:
         """终止任务"""
-        ui.notify(f"Killing {self.task_selected_name}...")
-        api.kill_task(self.task_selected_name)
+        task_name = self.task_selected_name
+        ui.notify(f"Killing {task_name}...")
+        api.kill_task(task_name)
         self.update_task_table()
         self.dialog_yesno.close()
         self.ok_button.on_click(None)
