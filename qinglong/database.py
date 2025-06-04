@@ -1,6 +1,6 @@
 import shelvez as shelve
 from .config import settings as cfg
-from .data_struct import ProjectInfo, TaskInfo
+from .models import ProjectInfo, TaskInfo
 
 _project_serializer = shelve.serialer.PydanticSerializer(ProjectInfo)
 _task_serializer = shelve.serialer.PydanticSerializer(TaskInfo)

@@ -4,8 +4,8 @@ import logging
 from pathlib import Path
 
 from .config import settings as cfg
-from .data_struct import ProjectInfo, TaskInfo, TaskStatus
-from .data_base import project_db, task_db
+from .models import ProjectInfo, TaskInfo, TaskStatus
+from .database import project_db, task_db
 from .scheduler import scheduler
 from .download import ProjectDownloder
 from .uvtask import UvTask

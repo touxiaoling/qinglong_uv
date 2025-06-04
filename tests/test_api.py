@@ -17,8 +17,8 @@ from qinglong.api import (
     init_task,
     sync_task,
 )
-from qinglong.data_struct import ProjectInfo, TaskInfo, TaskStatus
-from qinglong.data_base import project_db, task_db
+from qinglong.models import ProjectInfo, TaskInfo, TaskStatus
+from qinglong.database import project_db, task_db
 from qinglong import errors
 
 # 测试数据
