@@ -1,9 +1,20 @@
 [project]
 name = "qinglong-uv"
 version = "0.1.0"
-description = "Add your description here"
+description = "一个使用uv管理Python版本和包的类qinglong定时运行面板，支持运行Python代码。A Qinglong-like panel for managing Python tasks using uv package manager, supporting Python code execution."
 readme = "README.md"
 requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "tomin" }]
+keywords = ["qinglong", "uv", "task-scheduler", "python", "nicegui"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+]
 dependencies = [
     "apscheduler>=3.11.0",
     "gitpython>=3.1.44",
@@ -62,8 +73,4 @@ exclude = [
 ignore = ["F401"]
 
 [dependency-groups]
-dev = [
-    "jurigged>=0.6.0",
-    "pytest>=8.3.5",
-    "pywebview>=5.4",
-]
+dev = ["jurigged>=0.6.0", "pytest>=8.3.5", "pywebview>=5.4"]
