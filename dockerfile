@@ -1,5 +1,4 @@
 FROM linuxserver/ffmpeg:latest
-COPY --from=ghcr.io/astral-sh/uv /uv /uvx /bin/
 
 WORKDIR /code
 
@@ -17,6 +16,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN mkdir -p /code/data/.cache
 RUN /ffmpegwrapper.sh -version
+COPY --from=ghcr.io/astral-sh/uv /uv /uvx /bin/
 COPY pyproject.toml uv.lock ./
 COPY ./qinglong ./qinglong
 ENTRYPOINT ["uv" , "run","--no-dev" ,"-m", "qinglong"]
