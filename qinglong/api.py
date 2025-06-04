@@ -91,7 +91,7 @@ def get_project_config(project_name: str):
     project_path = Path(project_info.project_path)
     for config_file in project_path.glob("config.*"):
         return config_file
-    return project_path / "config.toml"
+    return project_path / "config.yaml"
 
 
 def set_task(name: str, project_name: str, cron: str, cmd: str):

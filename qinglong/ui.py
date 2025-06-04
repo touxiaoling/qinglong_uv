@@ -239,6 +239,10 @@ class MainPage:
             ui.notify("Config file not found", type="warning")
             return
 
+        if not config_file.exists():
+            ui.notify("Create config file", type="positive")
+            config_file.touch(exist_ok=True)
+
         self.editor.language = config_file.suffix[1:]
         self.editor.value = config_file.read_text()
         self.editor_label.set_text(f"Project Config: {config_file.name}")
