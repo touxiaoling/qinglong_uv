@@ -19,7 +19,7 @@ repos:
         files: \.(py|ipynb)$
       - id: pytest
         name: pytest
-        entry: uv run pytest -s
+        entry: uv run pytest -s -m "not slow"
         language: system
         types: [python]
         pass_filenames: false

@@ -37,6 +37,7 @@ def test_remove_job(scheduler: Scheduler):
     assert len(scheduler.jobs) == 0
 
 
+@pytest.mark.slow
 def test_pause_resume_job(scheduler: Scheduler):
     """测试暂停和恢复任务"""
     execution_count = 0
@@ -68,5 +69,5 @@ def test_run_job(scheduler: Scheduler):
 
     scheduler.add_job("test_job", test_func, trigger=10)  # 设置较长的间隔
     scheduler.run_job("test_job")  # 立即运行
-    time.sleep(0.2)  # 等待执行
+    time.sleep(0.01)  # 等待执行
     assert execution_count == 1
