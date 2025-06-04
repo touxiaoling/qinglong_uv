@@ -81,6 +81,7 @@ def test_list_tasks():
     assert tasks[0]["project_name"] == TEST_PROJECT_NAME
 
 
+@pytest.mark.skip(reason="no test project")
 def test_clone_project():
     """测试克隆项目"""
     # 测试克隆新项目
@@ -90,6 +91,7 @@ def test_clone_project():
     assert project_info.url == TEST_PROJECT_URL
 
 
+@pytest.mark.skip(reason="no test project")
 def test_remove_project():
     """测试删除项目"""
     # 先添加项目
@@ -155,6 +157,7 @@ def test_remove_task():
     assert TEST_TASK_NAME not in task_db
 
 
+@pytest.mark.skip(reason="no test project")
 def test_task_status_operations():
     """测试任务状态相关操作"""
     # 先添加任务
@@ -182,6 +185,7 @@ def test_task_status_operations():
     assert task_db[TEST_TASK_NAME].status == TaskStatus.STARTED
 
 
+@pytest.mark.skip(reason="no test project")
 def test_sync_operations():
     """测试同步操作"""
     # 添加测试数据

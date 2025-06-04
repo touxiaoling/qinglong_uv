@@ -17,3 +17,10 @@ repos:
         language: system
         types: [python]
         files: \.(py|ipynb)$
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -s
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true

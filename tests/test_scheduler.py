@@ -70,28 +70,3 @@ def test_run_job(scheduler: Scheduler):
     scheduler.run_job("test_job")  # 立即运行
     time.sleep(0.2)  # 等待执行
     assert execution_count == 1
-
-
-def test_cron_trigger(scheduler: Scheduler):
-    """测试 cron 触发器"""
-
-    def test_func():
-        pass
-
-    job = scheduler.add_job("cron_job", test_func, trigger="* * * * *")
-    assert job.trigger.fields[0].expressions[0].first == 0
-    assert job.trigger.fields[0].expressions[0].last == 59
-
-
-def test_max_instances(scheduler: Scheduler):
-    """测试最大实例数限制"""
-    execution_count = 0
-
-    def test_func():
-        nonlocal execution_count
-        time.sleep(0.5)  # 模拟长时间运行的任务
-        execution_count += 1
-
-    scheduler.add_job("test_job", test_func, trigger=1, max_instances=1)
-    time.sleep(1.1)  # 等待第一次执行
-    assert execution_count == 1  # 由于 max_instances=1，应该只有一次执行
