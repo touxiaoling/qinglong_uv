@@ -124,7 +124,7 @@ def set_task(name: str, project_name: str, cron: str, cmd: str):
     if name in task_dict:
         task = task_dict[name]
         task.cmd = cmd
-        task.project_path = project_info.project_path
+        task.project_path = Path(project_info.project_path)
     else:
         task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path)
         task_dict[name] = task
