@@ -121,8 +121,13 @@ def set_task(name: str, project_name: str, cron: str, cmd: str):
             status="started",
         )
 
-    task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path)
-    task_dict[name] = task
+    if name in task_dict:
+        task = task_dict[name]
+        task.cmd = cmd
+        task.project_path = project_info.project_path
+    else:
+        task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path)
+        task_dict[name] = task
 
     scheduler.add_job(func=task.run, trigger=task_info.cron, job_id=name)
 
