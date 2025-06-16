@@ -80,12 +80,18 @@ System configuration file is located at `config.py`, main configuration items in
 
 ## 待开发功能 | Planned Features
 
+- [ ] 更新python小版本和虚拟环境
+  - `qinglong启动时，检测已安装python版本，检查python小版本有更新`
+  - `uv python install --reinstal 3.13`
+  - `cd project_path`
+  - `uv venv && uv sync`
 - [ ] 自动更新Git项目（定时更新，支持webhook更新）| Auto-update Git projects (scheduled updates, webhook support)
-- [ ] 支持API自动重定向 | Support API auto-redirect
 - [ ] 通知系统集成 | Notification system integration
 - [ ] 多项目间互相调用 | Inter-project calls
 - [ ] 级联触发器支持 | Cascading trigger support
 - [ ] 统一通知SDK | Unified notification SDK
+- [x] 支持API自动重定向 | Support API auto-redirect
+  - 拆分到其他工程
 
 ## 问题与建议 | Issues and Suggestions
 
@@ -99,7 +105,3 @@ System configuration file is located at `config.py`, main configuration items in
 
 欢迎提交Issue和Pull Request！
 Issues and Pull Requests are welcome!
-
-## 许可证 | License
-
-[待定 | To be determined]
