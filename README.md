@@ -80,18 +80,24 @@ System configuration file is located at `config.py`, main configuration items in
 
 ## 待开发功能 | Planned Features
 
-- [ ] 更新python小版本和虚拟环境
-  - `qinglong启动时，检测已安装python版本，检查python小版本有更新`
-  - `uv python install --reinstal 3.13`
-  - `cd project_path`
-  - `uv venv && uv sync`
+- [ ] 更新python小版本和虚拟环境，清除无用的缓存包
+  - `qinglong启动时`
+    - `检测uv如果uv版本更新，则移除所有python(或者手动管理也行吧)`
+      - `uv python uninstall --all`
+    - `清除无用pip缓存`
+      - `uv cache prune`
+  - `task启动时，如果没执行过初始化，则`
+    - `uv venv`
 - [ ] 自动更新Git项目（定时更新，支持webhook更新）| Auto-update Git projects (scheduled updates, webhook support)
 - [ ] 通知系统集成 | Notification system integration
 - [ ] 多项目间互相调用 | Inter-project calls
 - [ ] 级联触发器支持 | Cascading trigger support
 - [ ] 统一通知SDK | Unified notification SDK
+  - 通过with参数添加额外依赖项？ 好像不用，因为必须要设定才能通知。
+  - `uv run --with qlnotify main.py`
 - [x] 支持API自动重定向 | Support API auto-redirect
   - 拆分到其他工程
+- [ ] 使用pyenv编译优化的python版本？
 
 ## 问题与建议 | Issues and Suggestions
 

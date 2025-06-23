@@ -200,6 +200,7 @@ def sync_project():
 
 
 def init_task():
+    UvTask.cache_prune()
     for task_name, task_info in task_db.items():
         if task_info.project_name not in project_db:
             continue

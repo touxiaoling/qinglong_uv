@@ -11,19 +11,31 @@ def temp_project_path(tmp_path: Path):
     """创建一个临时项目目录，测试完成后自动清理"""
     project_dir = tmp_path / "test_project"
     project_dir.mkdir()
+    project_dir.joinpath("pyproject.toml").write_text(
+        """
+        [project]
+        name = "test-try"
+        version = "0.1.0"
+        description = "Add your description here"
+        readme = "README.md"
+        requires-python = ">=3.13"
+        dependencies = []
+        """
+    )
+    project_dir.joinpath("main.py").write_text("print('Hello, World!')")
     yield project_dir
 
 
 @pytest.fixture
 def uvtask(temp_project_path):
     """创建一个 UvTask 实例"""
-    return UvTask(name="test_task", cmd="echo 'Hello, World!'", project_path=str(temp_project_path), uv_args="--python 3.13")
+    return UvTask(name="test_task", cmd="main.py", project_path=str(temp_project_path), uv_args="--python 3.13")
 
 
 def test_uvtask_initialization(uvtask: UvTask, temp_project_path: Path):
     """测试 UvTask 初始化"""
     assert uvtask.name == "test_task"
-    assert uvtask.cmd == "echo 'Hello, World!'"
+    assert uvtask.cmd == "main.py"
     assert uvtask.project_path == Path(temp_project_path)
     assert uvtask.uv_args == "--python 3.13"
     assert uvtask.max_log_size == 10 * 1024 * 1024
