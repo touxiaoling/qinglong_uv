@@ -64,7 +64,8 @@ class UvTask:
         with self._global_task_lock:
             abs_path_str = str(project_path.absolute())
             if abs_path_str not in self._project_inited:
-                subprocess.run(["uv", "venv"], cwd=project_path, env=self.env, check=True)
+                subprocess.run(["uv", "venv", "--clear"], cwd=project_path, env=self.env, check=True)
+                subprocess.run(["uv", "sync"], cwd=project_path, env=self.env, check=True)
                 _logger.info(f"uvtask project inited: {abs_path_str}")
                 self._project_inited.add(abs_path_str)
 
