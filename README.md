@@ -107,6 +107,8 @@ System configuration file is located at `config.py`, main configuration items in
   - 多项目级联触发 | Multi-project cascading triggers
   - 参数传递 | Parameter passing
 
+  https://sh.readthedocs.io/en/latest/sections/baking.html
+
 ## 贡献 | Contributing
 
 欢迎提交Issue和Pull Request！
