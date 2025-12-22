@@ -29,4 +29,4 @@ ENV UV_PYTHON_INSTALL_DIR=/code/data/.cache/python
 
 COPY pyproject.toml uv.lock ./
 COPY ./qinglong ./qinglong
-ENTRYPOINT ["uv" , "run","--no-dev","--force", "-m", "qinglong"]
+ENTRYPOINT ["uv" , "run","--no-dev", "-m", "qinglong"]

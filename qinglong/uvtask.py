@@ -44,7 +44,7 @@ class UvTask:
 
     @classmethod
     def cache_prune(cls):
-        subprocess.run(["uv", "cache", "prune"], check=True, env=_env())
+        subprocess.run(["uv", "cache", "prune", "--force"], check=True, env=_env())
 
     @property
     def is_running(self) -> bool:
