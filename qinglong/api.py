@@ -204,13 +204,16 @@ def init_task():
     for task_name, task_info in task_db.items():
         if task_info.project_name not in project_db:
             continue
-        project_info: ProjectInfo = project_db[task_info.project_name]
-        task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path)
-        task_dict[task_name] = task
-        # 如果任务已存在，先删除再添加，避免重新加载时的冲突
+
+        # 如果任务已存在，不添加，避免重新加载时的冲突
         if task_name in [job.id for job in scheduler.jobs]:
             _logger.error(f"task {task_name} already exists, removing and adding again")
             continue
+
+        project_info: ProjectInfo = project_db[task_info.project_name]
+        task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path)
+        task_dict[task_name] = task
+
         scheduler.add_job(
             func=task.run, trigger=task_info.cron, job_id=task_name, paused=(task_info.status == TaskStatus.PAUSED)
         )
