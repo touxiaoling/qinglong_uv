@@ -86,14 +86,13 @@ class RotatingLogFile:
             message (str): 日志消息
         """
         if self._should_rotate():
-            self.close()
             self._rotate()
-            self._file = self._open_file()
         elif self._file is None or self._file.closed:
             self._file = self._open_file()
 
         self.buffer.appendleft(message)
         self._file.write(message + "\n")
+        self._file.flush()
 
     def readlines(self, limit=1000):
         return islice(self.buffer, limit)
