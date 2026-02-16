@@ -46,6 +46,10 @@ class UvTask:
     def cache_prune(cls):
         subprocess.run(["uv", "cache", "prune", "--force"], check=True, env=_env())
 
+    @classmethod
+    def python_upgrade(cls):
+        subprocess.run(["uv", "python", "upgrade"], check=True, env=_env())
+
     @property
     def is_running(self) -> bool:
         """检查进程是否正在运行
