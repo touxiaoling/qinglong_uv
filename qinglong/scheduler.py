@@ -25,7 +25,7 @@ class Scheduler:
         return self.scheduler.get_jobs()
 
     def create_sqlite_engine(self):
-        from sqlalchemy import create_engine, event
+        from sqlalchemy import create_engine, event  # type: ignore[import-not-found]
 
         def enable_wal(dbapi_conn, connection_record):
             # 设置优化参数
@@ -85,7 +85,7 @@ class Scheduler:
 scheduler = Scheduler()
 
 if __name__ == "__main__":
-    scheduler.start()
+    scheduler.scheduler.start()
 
     def job_func():
         print("Job executed")

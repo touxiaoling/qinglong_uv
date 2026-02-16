@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 import shutil
 import logging
@@ -25,7 +27,7 @@ def list_tasks():
     return tasks
 
 
-def clone_project(url: str, name: str = None):
+def clone_project(url: str, name: str | None = None):
     project_name = name if name else url.split("/")[-1]
 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -118,7 +120,7 @@ def set_task(name: str, project_name: str, cron: str, cmd: str):
             command=cmd,
             created_at=created_at,
             upgrade_at=created_at,
-            status="started",
+            status=TaskStatus.STARTED,
         )
 
     if name in task_dict:
@@ -179,8 +181,8 @@ def run_task(task_name: str):
 def kill_task(task_name: str):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
-    task: UvTask = task_dict.get(task_name)
-    if not task.is_running:
+    task = task_dict.get(task_name)
+    if task is None or not task.is_running:
         raise errors.TaskNotRunningError(task_name)
     task.kill()
 
@@ -188,7 +190,9 @@ def kill_task(task_name: str):
 def get_task_logs(task_name: str, limit: int = 1000):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
-    task: UvTask = task_dict.get(task_name)
+    task = task_dict.get(task_name)
+    if task is None:
+        raise errors.TaskNotFoundError(task_name)
     return task.get_logs(limit=limit)
 
 

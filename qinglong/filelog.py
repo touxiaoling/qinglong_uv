@@ -100,7 +100,8 @@ class RotatingLogFile:
 
     def flush(self):
         """刷新文件缓冲区"""
-        self._file.flush()
+        if self._file is not None:
+            self._file.flush()
 
     def log(self, message: str, level="INFO"):
         """

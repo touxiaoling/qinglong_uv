@@ -228,7 +228,7 @@ class MainPage:
         api.remove_project(self.project_selected_name)
         self.update_project_table()
         self.dialog_yesno.close()
-        self.ok_button.on_click(None)
+        self.ok_button.on_click(lambda: None)
         self.yesno_label.set_text("")
 
     @error_handler
@@ -355,7 +355,7 @@ class MainPage:
         api.kill_task(task_name)
         self.update_task_table()
         self.dialog_yesno.close()
-        self.ok_button.on_click(None)
+        self.ok_button.on_click(lambda: None)
         self.yesno_label.set_text("")
 
     @error_handler

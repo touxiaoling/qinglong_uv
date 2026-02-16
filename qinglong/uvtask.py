@@ -97,6 +97,7 @@ class UvTask:
                 bufsize=1,
             )
             try:
+                assert self._process.stdout is not None
                 while line := self._process.stdout.readline():
                     log_f.log(line)
 
