@@ -31,6 +31,7 @@ TASK_COLUMNS = [
     {"name": "cmd", "label": "Cmd", "field": "command", "sortable": True},
     {"name": "upgrade_at", "label": "Upgrade At", "field": "upgrade_at", "sortable": True},
     {"name": "created_at", "label": "Created At", "field": "created_at", "sortable": True},
+    {"name": "timeout", "label": "Timeout", "field": "timeout", "sortable": True},
 ]
 
 
@@ -104,6 +105,7 @@ class MainPage:
             self.input_task_name = ui.input(label="Name", placeholder="Task Name")
             self.input_task_cron = ui.input(label="Cron", placeholder="Cron Expression")
             self.input_task_cmd = ui.input(label="Command", placeholder="Command")
+            self.input_task_timeout = ui.input(label="Timeout", placeholder="Timeout", value="0")
             with ui.row():
                 ui.button("Set", on_click=self.set_task)
                 ui.button("Cancel", on_click=self.dialog_task.close)
@@ -296,13 +298,14 @@ class MainPage:
         project_name = self.project_selected_name
         cron = self.input_task_cron.value
         cmd = self.input_task_cmd.value
+        timeout = int(self.input_task_timeout.value)
 
         if not all([name, project_name, cron, cmd]):
             ui.notify("Please fill in all required fields", type="warning")
             return
 
         ui.notify(f"Setting {name}...")
-        api.set_task(name, project_name, cron, cmd)
+        api.set_task(name, project_name, cron, cmd, timeout)
         self.update_task_table()
         self.dialog_task.close()
 

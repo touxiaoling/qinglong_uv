@@ -31,6 +31,7 @@ dev = [
     "jurigged>=0.6.0",
     "pre-commit>=4.2.0",
     "pytest>=8.3.5",
+    "pytest-cov>=7.1.0",
     "pywebview>=5.4",
 ]
 
@@ -79,3 +80,8 @@ exclude = [
 
 [tool.ruff.lint]
 ignore = ["F401"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

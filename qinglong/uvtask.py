@@ -4,6 +4,8 @@ import logging
 import subprocess
 import threading
 import functools
+import shlex
+import time
 
 from .filelog import RotatingLogFile
 from .config import settings as cfg
@@ -32,12 +34,14 @@ class UvTask:
         project_path: str,
         uv_args: str = "",
         max_log_size: int = 10 * 1024 * 1024,  # 10MB
+        timeout: int = 0,
     ):
         self.name = name
         self.cmd = cmd
         self.uv_args = uv_args
         self.project_path = Path(project_path)
         self.max_log_size = max_log_size  # 日志文件最大大小（字节）
+        self.timeout = timeout  # 单任务最大运行时间（秒），0表示不限制
         self.log_file = RotatingLogFile(cfg.TASK_LOG_PATH / (self.name + ".log"))
         self._process = None  # 添加进程属性
         _logger.info(f"uvtask log file: {self.log_file}")
@@ -75,54 +79,62 @@ class UvTask:
 
     def run(self):
         """运行命令，并将 stdout 和 stderr 直接写入日志文件"""
-        cmd = f"uv run {self.uv_args} {self.cmd}"
-        cmd = [v for v in cmd.split(" ") if v]
+        cmd = ["uv", "run", *shlex.split(self.uv_args), *shlex.split(self.cmd)]
         _logger.info(f"uvtask command: {cmd}")
 
         if self.project_path.is_dir():
-            task_env = self.project_path
+            task_path = self.project_path
             self.init_project(self.project_path)
         elif self.project_path.is_file():
-            task_env = self.project_path.parent
+            task_path = self.project_path.parent
 
         # 直接重定向 stdout 和 stderr 到日志文件
         with self.log_file as log_f:
             self._process = subprocess.Popen(
                 cmd,
-                cwd=task_env,
+                cwd=task_path,
                 env=self.env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
             )
+            process = self._process
             try:
-                assert self._process.stdout is not None
-                while line := self._process.stdout.readline():
+                assert process.stdout is not None
+                start_time = time.monotonic()
+                while line := process.stdout.readline():
                     log_f.log(line)
-
-                return_code = self._process.wait()
+                    if self.timeout > 0 and time.monotonic() - start_time > self.timeout:
+                        _logger.warning(f"Task {self.name} timed out after {self.timeout}s, terminating process.")
+                        self.kill()
+                        # raise subprocess.TimeoutExpired(cmd=cmd, timeout=self.timeout)
+                return_code = process.wait()
             finally:
                 self._process = None
         _logger.info(f"uvtask command completed with exit code {return_code}: {cmd}")
 
-    def kill(self):
-        """终止正在运行的进程"""
+    def kill(self) -> int | None:
+        """终止正在运行的进程并返回退出码"""
         process = self._process
         if process is None:
             raise errors.TaskNotRunningError(self.name)
 
+        return_code: int | None = None
         try:
             process.terminate()
-            process.wait(timeout=5)  # 等待进程终止
+            return_code = process.wait(timeout=5)  # 等待进程终止
             _logger.info(f"Successfully terminated process for task: {self.name}")
         except subprocess.TimeoutExpired:
             process.kill()  # 如果进程没有及时终止，强制结束
+            return_code = process.wait(timeout=5)
             _logger.warning(f"Force killed process for task: {self.name}")
         except Exception as e:
             _logger.error(f"Error while killing process for task {self.name}: {e}")
+            return_code = process.poll()
         finally:
             self._process = None
+        return return_code
 
     def get_logs(self, limit: int = 1000):
         return self.log_file.readlines(limit)

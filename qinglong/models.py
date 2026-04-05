@@ -32,6 +32,7 @@ class TaskInfo(BaseModel):
     created_at: str
     upgrade_at: str
     info: str | None = None
+    timeout: int = 0
 
 
 if __name__ == "__main__":

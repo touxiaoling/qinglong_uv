@@ -1,6 +1,8 @@
-import os
-import pytest
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
 from qinglong.filelog import RotatingLogFile
 
 
@@ -102,3 +104,20 @@ def test_file_encoding(temp_log_file: Path):
         log.flush()
     content = temp_log_file.read_text(encoding="utf-8")
     assert test_message in content
+
+
+def test_log_skips_extra_timestamp_when_already_present(temp_log_file: Path):
+    fixed = "2030-05-05 12:00:00"
+    with patch("qinglong.filelog.datetime") as md:
+        md.now.return_value.strftime.return_value = fixed
+        with RotatingLogFile(temp_log_file) as log:
+            log.log(f"msg {fixed} end")
+        content = temp_log_file.read_text(encoding="utf-8")
+    assert fixed in content
+    assert content.count(f"[{fixed}]") == 0
+
+
+def test_readlines_stops_when_hint_reached(temp_log_file: Path):
+    temp_log_file.write_text("\n".join(f"line{i}" for i in range(120)) + "\n")
+    log = RotatingLogFile(temp_log_file, buffer_lines=40)
+    assert len(log.buffer) == 40

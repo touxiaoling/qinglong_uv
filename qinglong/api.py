@@ -96,7 +96,7 @@ def get_project_config(project_name: str):
     return project_path / "config.yaml"
 
 
-def set_task(name: str, project_name: str, cron: str, cmd: str):
+def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0):
     if project_name not in project_db:
         raise errors.ProjectNotFoundError(project_name)
 
@@ -111,6 +111,7 @@ def set_task(name: str, project_name: str, cron: str, cmd: str):
         task_info.cron = cron
         task_info.command = cmd
         task_info.upgrade_at = created_at
+        task_info.timeout = timeout
         scheduler.remove_job(name)
     else:
         task_info = TaskInfo(
@@ -121,14 +122,16 @@ def set_task(name: str, project_name: str, cron: str, cmd: str):
             created_at=created_at,
             upgrade_at=created_at,
             status=TaskStatus.STARTED,
+            timeout=timeout,
         )
 
     if name in task_dict:
         task = task_dict[name]
         task.cmd = cmd
+        task.timeout = timeout
         task.project_path = Path(project_info.project_path)
     else:
-        task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path)
+        task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path, timeout=task_info.timeout)
         task_dict[name] = task
 
     scheduler.add_job(func=task.run, trigger=task_info.cron, job_id=name)
@@ -216,7 +219,7 @@ def init_task():
             continue
 
         project_info: ProjectInfo = project_db[task_info.project_name]
-        task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path)
+        task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path, timeout=task_info.timeout)
         task_dict[task_name] = task
 
         scheduler.add_job(

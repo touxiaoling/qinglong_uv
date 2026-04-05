@@ -1,6 +1,8 @@
 import os
 import pytest
 import tempfile
+import subprocess
+import time
 from pathlib import Path
 from qinglong.uvtask import UvTask
 from qinglong.config import settings as cfg
@@ -39,6 +41,7 @@ def test_uvtask_initialization(uvtask: UvTask, temp_project_path: Path):
     assert uvtask.project_path == Path(temp_project_path)
     assert uvtask.uv_args == "--python 3.13"
     assert uvtask.max_log_size == 10 * 1024 * 1024
+    assert uvtask.timeout == 0
 
 
 def test_uvtask_run(uvtask: UvTask):
@@ -60,3 +63,18 @@ def test_uvtask_with_file_project_path(tmp_path: Path):
     for log in task.get_logs():
         assert "test" in log
         break
+
+
+def test_uvtask_timeout(temp_project_path: Path):
+    """测试任务超时"""
+    task = UvTask(
+        name="timeout_task",
+        cmd='python -c "import time; [(print(i, flush=True), time.sleep(0.2)) for i in range(20)]"',
+        project_path=str(temp_project_path),
+        timeout=1,
+    )
+    start = time.monotonic()
+    task.run()
+    elapsed = time.monotonic() - start
+    assert elapsed < 3
+    assert not task.is_running
