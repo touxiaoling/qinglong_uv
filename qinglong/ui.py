@@ -48,6 +48,7 @@ def error_handler(func):
 
 class MainPage:
     def __init__(self):
+        self.current_log_task_name: str | None = None
         try:
             api.init_task()
             self._init_dialogs()
@@ -61,6 +62,8 @@ class MainPage:
         with ui.dialog() as self.dialog_log, ui.card().style("max-width: none"):
             # 任务日志
             self.task_logs = ui.markdown()
+        self.log_timer = ui.timer(2.0, self._refresh_task_logs, active=False)
+        self.dialog_log.on("hide", self._stop_log_refresh)
 
         with ui.dialog() as self.dialog_yesno, ui.card():
             # 删除项目确认
@@ -334,10 +337,28 @@ class MainPage:
     @error_handler
     def show_task_logs(self) -> None:
         """显示任务日志"""
-        task_name = self.task_selected_name
-        task_logs = "\n".join(api.get_task_logs(task_name))
-        self.task_logs.content = f"```\n{task_logs}\n```"
+        self.current_log_task_name = self.task_selected_name
+        self._refresh_task_logs()
         self.dialog_log.open()
+        self.log_timer.activate()
+
+    def _refresh_task_logs(self) -> None:
+        """刷新任务日志内容"""
+        task_name = self.current_log_task_name
+        if not task_name:
+            return
+        try:
+            task_logs = "\n".join(api.get_task_logs(task_name))
+            self.task_logs.content = f"```\n{task_logs}\n```"
+        except Exception as e:
+            _logger.error(f"刷新任务日志失败: {e}")
+            self.task_logs.content = f"```\nFailed to refresh logs: {e}\n```"
+            self._stop_log_refresh()
+
+    def _stop_log_refresh(self) -> None:
+        """停止日志自动刷新"""
+        self.log_timer.deactivate()
+        self.current_log_task_name = None
 
     @error_handler
     def start_kill_task(self) -> None:
