@@ -1,115 +1,135 @@
 # Qinglong-UV
 
-一个使用uv管理Python版本和包的类qinglong定时运行面板，目前仅支持运行Python代码。
+A lightweight task panel built with `uv` + `NiceGUI`, similar in spirit to Qinglong and currently focused on **scheduled execution for Python projects**.
+一个基于 `uv` + `NiceGUI` 的轻量任务面板，定位类似青龙，当前专注于 **Python 项目定时执行**。
 
-A Qinglong-like panel for managing Python tasks using uv package manager, currently supporting Python code execution only.
+Core idea: clone Git projects locally, initialize and run tasks with `uv`, and manage projects, tasks, and logs in a Web UI.
+核心思路：把 Git 项目拉到本地后，用 `uv` 初始化并执行任务，通过 Web 页面统一管理项目、任务和日志。
 
-## 主要功能 | Main Features
+## 功能概览 | Features
 
 ### 项目管理 | Project Management
-- 从URL下载Git项目 | Download Git projects from URLs
-- 支持手动更新Git项目 | Support manual Git project updates
-- 支持通过Web界面管理项目配置（`config.*`文件）| Manage project configurations via Web UI (`config.*` files)
-- 支持查看和管理项目列表 | View and manage project list
+- 通过 Git URL 克隆项目（已存在时执行 pull） | Clone projects from Git URLs (pull if already exists)
+- 在页面中手动更新项目 | Manually update projects in UI
+- 可视化查看项目列表和更新时间 | View project list and update timestamps
+- 在线编辑项目根目录的 `config.*`（支持 `toml` / `yaml` 校验） | Edit root `config.*` in UI (with `toml` / `yaml` validation)
 
 ### 任务管理 | Task Management
-- 支持使用cron表达式定时运行文件或Git项目 | Schedule tasks using cron expressions for files or Git projects
-- 支持长时间任务守护运行 | Support long-running task daemon
-- 支持任务的启动、暂停、立即运行等操作 | Support task operations: start, pause, run now
-- 支持查看任务运行日志 | View task execution logs
-- 支持通过Web界面配置任务 | Configure tasks via Web UI
+- 为项目创建定时任务（支持 crontab） | Create scheduled tasks per project (crontab supported)
+- 也支持用纯数字秒数作为间隔触发（例如 `60`） | Also supports pure integer seconds as interval triggers (e.g. `60`)
+- 支持 `Start` / `Pause` / `Run` / `Kill` / `Remove` / `Sync` | Supports `Start` / `Pause` / `Run` / `Kill` / `Remove` / `Sync`
+- 支持实时查看任务日志（页面每 2 秒刷新） | Real-time task logs (refresh every 2 seconds in UI)
 
-### Web界面 | Web Interface
-- 使用NiceGUI实现的现代化Web界面 | Modern Web UI implemented with NiceGUI
-- 支持项目管理和任务管理的可视化操作 | Visual operations for project and task management
-- 支持实时查看任务状态和日志 | Real-time task status and log viewing
+### 运行机制 | Runtime Behavior
+- 启动时会执行 | On startup:
+  - `uv python upgrade`
+  - `uv cache prune --force`
+- 任务首次运行某项目时会执行（每个项目仅一次） | On first task run per project (once per project):
+  - `uv venv --clear`
+  - `uv sync`
+- 任务实际执行命令格式：`uv run <你的命令>` | Actual execution format: `uv run <your command>`
 
-## 系统要求 | System Requirements
-- uv包管理器 | uv package manager
-- Git
+## 环境要求 | Requirements
 
-## 安装 | Installation
+- `uv`（必需） | `uv` (required)
+- `git`（克隆/更新项目必需） | `git` (required for clone/pull)
+- 操作系统可正常运行 `uv` 与 Python 子进程 | OS environment capable of running `uv` and Python subprocesses
 
-1. 安装uv | Install uv:
-   - 访问 [uv安装文档](https://docs.astral.sh/uv/getting-started/installation/) 获取安装说明
-   - Visit [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for installation instructions
+> 项目当前声明的 Python 版本为 `3.14`（见 `pyproject.toml` 的 `requires-python = "==3.14.*"`）。
+> Current declared Python version is `3.14` (see `pyproject.toml`: `requires-python = "==3.14.*"`).
 
-2. 克隆项目 | Clone the project:
+## 快速开始 | Quick Start
+
+### 1) 安装依赖 | Install Dependencies
+
 ```bash
-git clone https://github.com/yourusername/qinglong-uv.git
+git clone <your-repo-url>
 cd qinglong-uv
-```
-
-3. 使用uv安装依赖 | Install dependencies using uv:
-```bash
 uv sync
 ```
 
-## 使用说明 | Usage
+### 2) 启动服务 | Start Service
 
-1. 启动服务 | Start the service:
+生产方式（默认） | Production mode (default):
+
 ```bash
-uv run qinglong
+uv run -m qinglong
 ```
 
-2. 访问Web界面 | Access Web UI:
-- 默认地址 | Default address: http://localhost:80
+- 默认监听：`0.0.0.0:80` | Default bind: `0.0.0.0:80`
 
-3. 添加项目 | Add project:
-- 在Web界面输入项目名称和Git URL | Enter project name and Git URL in Web UI
-- 点击"Clone"按钮下载项目 | Click "Clone" button to download project
+开发调试方式（热重载） | Development mode (hot reload):
 
-4. 配置任务 | Configure task:
-- 选择项目 | Select project
-- 输入任务名称 | Enter task name
-- 设置cron表达式 | Set cron expression
-- 配置运行命令 | Configure run command
-- 点击"Set"保存任务 | Click "Set" to save task
+```bash
+uv run main.py
+```
+
+- 默认监听：`localhost:8080` | Default bind: `localhost:8080`
+
+### 3) 使用 Web 界面 | Use the Web UI
+
+1. 在 `Project` 区域点击 `Clone`，填写项目名和 Git URL | Click `Clone` in `Project`, then input project name and Git URL
+2. 在 `Task` 区域点击 `Set`，填写 | Click `Set` in `Task`, then fill:
+   - `Name`：任务名（全局唯一） | Task name (globally unique)
+   - `Cron`：crontab 表达式，或秒级整数 | Crontab expression or integer seconds
+   - `Command`：执行命令（如 `main.py`、`python app.py`） | Command to run (e.g. `main.py`, `python app.py`)
+3. 在任务列表中使用 `Start/Pause/Run/Kill/Logs` 管理和观察任务 | Use `Start/Pause/Run/Kill/Logs` in task table to manage and monitor tasks
+
+## Docker 部署 | Docker Deployment
+
+项目内置了 `dockerfile` 与 `docker-compose.yaml`。
+This repository includes `dockerfile` and `docker-compose.yaml`.
+
+```bash
+docker compose up -d --build
+```
+
+- 默认容器内部端口为 `80` | Default container port: `80`
+- `docker-compose.override.yaml` 示例将本机 `8080` 映射到容器 `80` | Example override maps host `8080` -> container `80`
+- 数据目录挂载：`./data:/code/data` | Data volume: `./data:/code/data`
 
 ## 配置说明 | Configuration
 
-系统配置文件位于`config.py`，主要配置项包括：
-System configuration file is located at `config.py`, main configuration items include:
+配置位于 `qinglong/config.py`（基于 `pydantic-settings`，可通过同名环境变量覆盖）。
+Configuration is defined in `qinglong/config.py` (based on `pydantic-settings`, overridable by environment variables with the same names).
 
-- `PROXY`: 代理设置 | Proxy settings
-- `DB_PATH`: 数据库路径 | Database path
-- `PROJECT_PATH`: 项目存储路径 | Project storage path
-- `TASK_LOG_PATH`: 任务日志路径 | Task log path
-- `TASK_LOG_MAX_BYTES`: 单个日志文件最大大小 | Maximum size of single log file
-- `TASK_LOG_BACKUP_COUNT`: 日志备份数量 | Number of log backups
+- `PROXY`：代理地址（默认空） | Proxy URL (default empty)
+- `DB_PATH`：项目/任务元数据存储目录（默认 `./data/db`） | Metadata storage dir for projects/tasks (default `./data/db`)
+- `PROJECT_PATH`：Git 项目保存目录（默认 `./data/projects`） | Git project directory (default `./data/projects`)
+- `TASK_LOG_PATH`：任务日志目录（默认 `./data/log`） | Task log directory (default `./data/log`)
+- `TASK_LOG_MAX_BYTES`：单日志最大大小（默认 `1MB`） | Max size per log file (default `1MB`)
+- `TASK_LOG_BACKUP_COUNT`：日志备份数量（默认 `5`） | Number of rotated backups (default `5`)
+- `DEBUG`：调试开关（默认 `True`） | Debug flag (default `True`)
 
-## 待开发功能 | Planned Features
+## 目录结构（核心）| Core Structure
 
-- [ ] 更新python小版本和虚拟环境，清除无用的缓存包
-  - `qinglong启动时`
-    - `检测uv如果uv版本更新，则移除所有python(或者手动管理也行吧)`
-      - `uv python uninstall --all`
-    - `清除无用pip缓存`
-      - `uv cache prune`
-  - `task启动时，如果没执行过初始化，则`
-    - `uv venv`
-- [ ] 自动更新Git项目（定时更新，支持webhook更新）| Auto-update Git projects (scheduled updates, webhook support)
-- [ ] 通知系统集成 | Notification system integration
-- [ ] 多项目间互相调用 | Inter-project calls
-- [ ] 级联触发器支持 | Cascading trigger support
-- [ ] 统一通知SDK | Unified notification SDK
-  - 通过with参数添加额外依赖项？ 好像不用，因为必须要设定才能通知。
-  - `uv run --with qlnotify main.py`
-- [x] 支持API自动重定向 | Support API auto-redirect
-  - 拆分到其他工程
-- [ ] 使用pyenv编译优化的python版本？
+```text
+qinglong/
+  api.py         # 项目与任务核心逻辑 | Core project/task logic
+  scheduler.py   # APScheduler 封装 | APScheduler wrapper
+  uvtask.py      # uv 任务执行与进程控制 | uv task execution and process control
+  ui.py          # NiceGUI 页面 | NiceGUI interface
+  config.py      # 配置项 | Settings
+data/
+  db/            # 本地数据库文件 | Local DB files
+  projects/      # 克隆下来的项目 | Cloned projects
+  log/           # 任务日志 | Task logs
+```
 
-## 问题与建议 | Issues and Suggestions
+## 已知限制 | Known Limitations
 
-- 通知系统建议使用[apprise](https://github.com/caronc/apprise)库 | Notification system recommended to use [apprise](https://github.com/caronc/apprise) library
-- 需要开发外部SDK用于 | Need to develop external SDK for:
-  - 统一通知 | Unified notifications
-  - 多项目级联触发 | Multi-project cascading triggers
-  - 参数传递 | Parameter passing
+- 当前只面向 Python/uv 工作流，不支持其他运行时 | Currently focused on Python/uv workflows only
+- 删除项目时不会自动联动删除关联任务，请先处理任务再删项目 | Removing a project does not automatically remove related tasks
+- 任务命令会被拼接为 `uv run ...`，复杂 shell 语法建议封装成脚本再调用 | Commands are wrapped as `uv run ...`; put complex shell logic into scripts
 
-  https://sh.readthedocs.io/en/latest/sections/baking.html
+## Roadmap
+
+- [ ] Git 项目自动更新（定时 / webhook） | Auto-update Git projects (scheduled / webhook)
+- [ ] 通知系统集成（可考虑 [apprise](https://github.com/caronc/apprise)） | Notification integration (consider [apprise](https://github.com/caronc/apprise))
+- [ ] 多项目联动与级联触发 | Cross-project linkage and cascading triggers
+- [ ] 统一通知 SDK | Unified notification SDK
 
 ## 贡献 | Contributing
 
-欢迎提交Issue和Pull Request！
-Issues and Pull Requests are welcome!
+欢迎提交 Issue 和 Pull Request。
+Issues and Pull Requests are welcome.
