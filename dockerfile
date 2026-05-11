@@ -9,7 +9,7 @@ RUN sed -i 's/ports.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.
     apt update && \
     apt install -y --no-install-recommends \
         curl \
-        libjemalloc2 \
+        libmimalloc-dev \
         git \
         wget \
         ca-certificates \
@@ -20,7 +20,7 @@ RUN sed -i 's/ports.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.
     mkdir -p /code/data/.cache && \
     /ffmpegwrapper.sh -version
 
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmimalloc.so
 
 COPY --from=ghcr.io/astral-sh/uv /uv /uvx /bin/
 
