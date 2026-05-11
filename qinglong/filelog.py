@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime
 from collections import deque
 from itertools import islice
+from typing import TextIO
 
 
 class RotatingLogFile:
@@ -26,7 +27,7 @@ class RotatingLogFile:
         # 确保日志目录存在
         self.filename.parent.mkdir(exist_ok=True)
         # 打开日志文件
-        self._file = None
+        self._file: TextIO | None = None
 
         self.buffer = deque(self._readlines(buffer_lines), maxlen=buffer_lines)
 
@@ -91,8 +92,12 @@ class RotatingLogFile:
             self._file = self._open_file()
 
         self.buffer.appendleft(message)
-        self._file.write(message + "\n")
-        self._file.flush()
+        file = self._file
+        if file is None:
+            file = self._open_file()
+            self._file = file
+        file.write(message + "\n")
+        file.flush()
 
     def readlines(self, limit=1000):
         return islice(self.buffer, limit)

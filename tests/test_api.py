@@ -78,7 +78,7 @@ def _sample_task_info(**kwargs) -> TaskInfo:
         status=TaskStatus.STARTED,
     )
     defaults.update(kwargs)
-    return TaskInfo(**defaults)
+    return TaskInfo.model_validate(defaults)
 
 
 def test_list_projects():

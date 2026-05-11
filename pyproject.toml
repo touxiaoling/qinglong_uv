@@ -34,6 +34,8 @@ dev = [
     "pytest>=8.3.5",
     "pytest-cov>=7.1.0",
     "pywebview>=5.4",
+    "ruff>=0.15.12",
+    "ty>=0.0.35",
 ]
 
 [tool.setuptools]

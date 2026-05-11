@@ -35,4 +35,4 @@ class ProjectDownloder:
             repo = Repo.clone_from(self.url, self.projectpath, depth=1)
         else:
             repo = Repo(self.projectpath)
-            res = repo.remotes.origin.pull()
+            repo.remotes.origin.pull()

@@ -55,8 +55,10 @@ def clone_project(url: str, name: str | None = None):
 
 
 def pull_project(project_name: str):
-    project_info: ProjectInfo = project_db.get(project_name)
+    project_info = project_db.get(project_name)
     if not project_info:
+        raise errors.ProjectNotFoundError(project_name)
+    if project_info.url is None:
         raise errors.ProjectNotFoundError(project_name)
 
     clone_project(
@@ -66,7 +68,7 @@ def pull_project(project_name: str):
 
 
 def remove_project(project_name: str):
-    project_info: ProjectInfo = project_db.get(project_name)
+    project_info = project_db.get(project_name)
     if not project_info:
         raise errors.ProjectNotFoundError(project_name)
 
@@ -89,7 +91,10 @@ def remove_project(project_name: str):
 
 
 def get_project_config(project_name: str):
-    project_info: ProjectInfo = project_db.get(project_name)
+    project_info = project_db.get(project_name)
+    if not project_info:
+        raise errors.ProjectNotFoundError(project_name)
+
     project_path = Path(project_info.project_path)
     for config_file in project_path.glob("config.*"):
         return config_file

@@ -1,4 +1,4 @@
-import asyncio
+import importlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -25,7 +25,7 @@ class Scheduler:
         return self.scheduler.get_jobs()
 
     def create_sqlite_engine(self):
-        from sqlalchemy import create_engine, event  # type: ignore[import-not-found]
+        sqlalchemy = importlib.import_module("sqlalchemy")
 
         def enable_wal(dbapi_conn, connection_record):
             # 设置优化参数
@@ -34,7 +34,7 @@ class Scheduler:
             dbapi_conn.execute("PRAGMA busy_timeout=5000;")  # 设置5秒超时
 
         # 创建带 WAL 的 SQLite 引擎
-        engine = create_engine(
+        engine = sqlalchemy.create_engine(
             url=f"sqlite:///{str(cfg.DB_PATH)}/jobs.sqlite",
             connect_args={"check_same_thread": False},  # 多线程必需
             pool_size=10,  # 连接池大小
@@ -42,7 +42,7 @@ class Scheduler:
         )
 
         # 注册事件监听器 - 每个新连接都启用 WAL
-        event.listen(engine, "connect", enable_wal)
+        sqlalchemy.event.listen(engine, "connect", enable_wal)
         return engine
 
     def add_job(self, job_id, func, trigger, paused=False, max_instances=1, **kwargs):
@@ -93,6 +93,6 @@ if __name__ == "__main__":
     scheduler.add_job("job1", job_func, trigger=1)
     print("Job added")
 
-    asyncio.sleep(10)
+    time.sleep(10)
     scheduler.remove_job("job1")
     print("Job removed")

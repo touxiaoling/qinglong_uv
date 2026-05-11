@@ -76,7 +76,7 @@ class MainPage:
         with ui.dialog() as self.dialog_config, ui.card().style("max-width: none").classes(DIALOG_WIDTH):
             # 项目配置
             self.editor_label = ui.label("Project Config")
-            self.editor = ui.codemirror("", language="toml", theme="vscodeDark").classes("flex-grow")
+            self.editor = ui.codemirror("", language="TOML", theme="vscodeDark").classes("flex-grow")
             with ui.button_group():
                 ui.button("Save", on_click=self.save_project_config)
                 ui.button("Cancel", on_click=self.dialog_config.close)
@@ -248,7 +248,8 @@ class MainPage:
             ui.notify("Create config file", type="positive")
             config_file.touch(exist_ok=True)
 
-        self.editor.language = config_file.suffix[1:]
+        language = config_file.suffix[1:]
+        self.editor.language = "TOML" if language == "toml" else "YAML" if language in {"yaml", "yml"} else None
         self.editor.value = config_file.read_text()
         self.editor_label.set_text(f"Project Config: {config_file.name}")
         self.dialog_config.open()
@@ -261,7 +262,7 @@ class MainPage:
             ui.notify("Config file not found", type="warning")
             return
 
-        language = self.editor.language
+        language = str(self.editor.language).lower()
         content = self.editor.value
 
         # 验证配置文件格式
@@ -288,7 +289,6 @@ class MainPage:
     @error_handler
     def start_set_task(self) -> None:
         """开始设置任务"""
-        project_name = self.project_selected_name
         self.dialog_task.open()
 
     @error_handler
