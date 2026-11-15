@@ -1,17 +1,14 @@
+import functools
 import os
-from pathlib import Path
-import logging
+import shlex
+import signal
 import subprocess
 import threading
-import functools
-import shlex
-import time
+from pathlib import Path
 
-from .filelog import RotatingLogFile
-from .config import settings as cfg
 from . import errors
-
-_logger = logging.getLogger(__name__)
+from .config import settings as cfg
+from .filelog import RotatingLogFile
 
 
 @functools.cache
@@ -24,117 +21,144 @@ def _env():
 
 
 class UvTask:
-    _global_task_lock = threading.Lock()
-    _project_inited = set()
-
     def __init__(
         self,
         name: str,
         cmd: str,
         project_path: str,
         uv_args: str = "",
-        max_log_size: int = 10 * 1024 * 1024,  # 10MB
+        max_log_size: int | None = None,
         timeout: int = 0,
     ):
         self.name = name
         self.cmd = cmd
         self.uv_args = uv_args
         self.project_path = Path(project_path)
-        self.max_log_size = max_log_size  # 日志文件最大大小（字节）
-        self.timeout = timeout  # 单任务最大运行时间（秒），0表示不限制
-        self.log_file = RotatingLogFile(cfg.TASK_LOG_PATH / (self.name + ".log"))
-        self._process = None  # 添加进程属性
-        _logger.info(f"uvtask log file: {self.log_file}")
-
-    @classmethod
-    def cache_prune(cls):
-        subprocess.run(["uv", "cache", "prune", "--force"], check=True, env=_env())
-
-    @classmethod
-    def python_upgrade(cls):
-        subprocess.run(["uv", "python", "upgrade"], check=True, env=_env())
+        self.max_log_size = cfg.TASK_LOG_MAX_BYTES if max_log_size is None else max_log_size
+        self.timeout = timeout
+        self.log_file = RotatingLogFile(
+            cfg.TASK_LOG_PATH / (self.name + ".log"), max_size=self.max_log_size, backup_count=cfg.TASK_LOG_BACKUP_COUNT
+        )
+        self._lock = threading.Lock()
+        self._stop_lock = threading.Lock()
+        self._process: subprocess.Popen[str] | None = None
+        self._finished: threading.Event | None = None
+        self._enabled = True
+        self._stop_reason: str | None = None
 
     @property
     def is_running(self) -> bool:
-        """检查进程是否正在运行
-        Returns:
-            bool: 如果进程正在运行返回True，否则返回False
-        """
-        if self._process is None:
-            return False
-        return self._process.poll() is None
+        with self._lock:
+            return self._process is not None
 
     @property
     def env(self):
         return _env()
 
-    def init_project(self, project_path: Path):
-        with self._global_task_lock:
-            abs_path_str = str(project_path.absolute())
-            if abs_path_str not in self._project_inited:
-                subprocess.run(["uv", "venv", "--clear"], cwd=project_path, env=self.env, check=True)
-                subprocess.run(["uv", "sync"], cwd=project_path, env=self.env, check=True)
-                _logger.info(f"uvtask project inited: {abs_path_str}")
-                self._project_inited.add(abs_path_str)
-
-    def run(self):
-        """运行命令，并将 stdout 和 stderr 直接写入日志文件"""
-        cmd = ["uv", "run", *shlex.split(self.uv_args), *shlex.split(self.cmd)]
-        _logger.info(f"uvtask command: {cmd}")
-
-        if self.project_path.is_dir():
-            task_path = self.project_path
-            self.init_project(self.project_path)
-        elif self.project_path.is_file():
-            task_path = self.project_path.parent
-
-        # 直接重定向 stdout 和 stderr 到日志文件
-        with self.log_file as log_f:
-            self._process = subprocess.Popen(
-                cmd,
-                cwd=task_path,
-                env=self.env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
+    def disable(self, *, stop_running=False):
+        with self._lock:
             process = self._process
+            if process is not None and not stop_running:
+                raise errors.TaskRunningError(self.name)
+            self._enabled = False
+        if process is not None:
+            self._stop(process, "Service shutdown")
+
+    def run(self, *, command: str | None = None, timeout: int | None = None):
+        command = self.cmd if command is None else command
+        timeout = self.timeout if timeout is None else timeout
+        task_path = self.project_path.parent if self.project_path.is_file() else self.project_path
+        cmd = ["uv", "run"]
+        if not (task_path / "pyproject.toml").is_file():
+            # A script-only checkout can be nested inside the panel's own project.
+            cmd.extend(["--no-project", "--isolated"])
+        cmd.extend(shlex.split(self.uv_args))
+        cmd.extend(shlex.split(command))
+        with self._lock:
+            if not self._enabled or self._process is not None:
+                return
             try:
-                assert process.stdout is not None
-                start_time = time.monotonic()
-                while line := process.stdout.readline():
-                    log_f.log(line)
-                    if self.timeout > 0 and time.monotonic() - start_time > self.timeout:
-                        _logger.warning(f"Task {self.name} timed out after {self.timeout}s, terminating process.")
-                        self.kill()
-                        # raise subprocess.TimeoutExpired(cmd=cmd, timeout=self.timeout)
-                return_code = process.wait()
-            finally:
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=task_path,
+                    env=self.env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    encoding="utf-8",
+                    errors="replace",
+                    start_new_session=os.name == "posix",
+                )
+            except OSError as exc:
+                with self.log_file as log_f:
+                    log_f.log(f"Could not start task: {exc}")
+                raise
+            self._process = process
+            finished = self._finished = threading.Event()
+            self._stop_reason = None
+
+        timer = None
+        if timeout > 0:
+            timer = threading.Timer(timeout, self._stop, args=(process, f"Timed out after {timeout}s"))
+            timer.start()
+        try:
+            with self.log_file as log_f:
+                try:
+                    assert process.stdout is not None
+                    with process.stdout:
+                        log_f.log("Run started")
+                        for line in process.stdout:
+                            log_f.log(line)
+                    return_code = process.wait()
+                finally:
+                    if timer is not None:
+                        timer.cancel()
+                        timer.join()
+                    if process.poll() is None:
+                        self._stop(process, "Log capture failed")
+                    with self._stop_lock:
+                        log_f.log(f"{self._stop_reason or 'Run finished'} (exit code {process.returncode})")
+        finally:
+            with self._stop_lock, self._lock:
                 self._process = None
-        _logger.info(f"uvtask command completed with exit code {return_code}: {cmd}")
+                self._finished = None
+                finished.set()
+        return return_code
 
     def kill(self) -> int | None:
-        """终止正在运行的进程并返回退出码"""
-        process = self._process
-        if process is None:
+        with self._lock:
+            process = self._process
+            finished = self._finished
+        if process is None or finished is None:
             raise errors.TaskNotRunningError(self.name)
-
-        return_code: int | None = None
-        try:
-            process.terminate()
-            return_code = process.wait(timeout=5)  # 等待进程终止
-            _logger.info(f"Successfully terminated process for task: {self.name}")
-        except subprocess.TimeoutExpired:
-            process.kill()  # 如果进程没有及时终止，强制结束
-            return_code = process.wait(timeout=5)
-            _logger.warning(f"Force killed process for task: {self.name}")
-        except Exception as e:
-            _logger.error(f"Error while killing process for task {self.name}: {e}")
-            return_code = process.poll()
-        finally:
-            self._process = None
+        return_code = self._stop(process, "Stopped manually")
+        finished.wait(5)
         return return_code
+
+    def _stop(self, process: subprocess.Popen[str], reason: str) -> int | None:
+        with self._stop_lock:
+            if self._process is not process or self._stop_reason is not None:
+                return process.returncode
+            try:
+                if os.name == "posix":
+                    os.killpg(process.pid, signal.SIGTERM)
+                else:
+                    process.terminate()
+            except ProcessLookupError:
+                return process.poll()
+            self._stop_reason = reason
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            # uv can exit before a descendant that still holds the output pipe open.
+            try:
+                if os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                elif process.poll() is None:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+            return process.wait()
 
     def get_logs(self, limit: int = 1000):
         return self.log_file.readlines(limit)

@@ -217,5 +217,7 @@ __marimo__/
 
 
 /data
+/frontend/node_modules/
+/qinglong/web_dist/
 .DS_Store
 docker-compose.override.yaml

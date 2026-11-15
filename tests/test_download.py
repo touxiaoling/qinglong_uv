@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from qinglong.download import FileDownloader, ProjectDownloder
 
 
-@patch("qinglong.download.httpx.Client")
+@patch("qinglong.download.httpx2.Client")
 def test_file_downloader_writes_bytes(mock_client_cls, tmp_path: Path):
     mock_resp = MagicMock()
     mock_resp.content = b"hello"
@@ -41,4 +41,4 @@ def test_project_downloader_pull_when_exists(mock_repo_cls, tmp_path: Path):
     pd.download()
 
     mock_repo_cls.assert_called_once_with(target)
-    mock_repo_cls.return_value.remotes.origin.pull.assert_called_once()
+    mock_repo_cls.return_value.remotes.origin.pull.assert_called_once_with(ff_only=True)

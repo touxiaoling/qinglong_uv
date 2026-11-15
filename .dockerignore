@@ -1,0 +1,6 @@
+.git
+.venv
+data
+frontend/node_modules
+qinglong/web_dist
+**/__pycache__

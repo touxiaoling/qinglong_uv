@@ -1,5 +1,5 @@
-import sys
-from unittest.mock import MagicMock, patch
+from threading import Event
+from unittest.mock import patch
 
 import pytest
 from apscheduler.util import undefined
@@ -10,23 +10,9 @@ from qinglong.scheduler import Scheduler
 @pytest.fixture
 def scheduler():
     s = Scheduler()
+    s.start()
     yield s
-    for job in list(s.jobs):
-        s.remove_job(job.id)
-
-
-def test_create_sqlite_engine_registers_wal_listener(scheduler: Scheduler):
-    mock_engine = MagicMock()
-    mock_sa = MagicMock()
-    mock_sa.create_engine.return_value = mock_engine
-    mock_sa.event.listen = MagicMock()
-
-    with patch.dict(sys.modules, {"sqlalchemy": mock_sa}):
-        eng = scheduler.create_sqlite_engine()
-
-    assert eng is mock_engine
-    mock_sa.create_engine.assert_called_once()
-    mock_sa.event.listen.assert_called_once()
+    s.shutdown()
 
 
 def test_add_job_passes_undefined_when_max_instances_none(scheduler: Scheduler):
@@ -36,7 +22,11 @@ def test_add_job_passes_undefined_when_max_instances_none(scheduler: Scheduler):
     assert kwargs.get("max_instances") is undefined
 
 
-def test_run_job_when_paused_pauses_after_modify(scheduler: Scheduler):
-    with patch("qinglong.scheduler.time.sleep"):
-        scheduler.add_job("paused_run", lambda: None, trigger=120)
-        scheduler.run_job("paused_run", paused=True)
+def test_run_job_while_paused_preserves_schedule(scheduler: Scheduler):
+    executed = Event()
+    job = scheduler.add_job("paused_run", executed.set, trigger=120, paused=True)
+
+    scheduler.run_job(job.id)
+
+    assert executed.wait(2)
+    assert scheduler.get_job(job.id).next_run_time is None

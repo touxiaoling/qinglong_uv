@@ -15,6 +15,15 @@ class ProjectNotFoundError(ProjectError):
         return f"Project '{self.project_name}' not found."
 
 
+class ProjectConflictError(ProjectError):
+    pass
+
+
+class ProjectHasTasksError(ProjectConflictError):
+    def __init__(self, project_name: str):
+        super().__init__(f"Remove the tasks for project '{project_name}' before deleting it.")
+
+
 class TaskError(Exception):
     """Base class for all exceptions raised by the task."""
 
@@ -52,3 +61,8 @@ class TaskNotRunningError(TaskError):
 
     def __str__(self):
         return f"Task '{self.task_name}' is not running."
+
+
+class TaskRunningError(TaskError):
+    def __init__(self, task_name: str):
+        super().__init__(f"Stop task '{task_name}' before deleting it.")

@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 import shutil
 import logging
+import shlex
 from pathlib import Path
+
+from apscheduler.triggers.base import BaseTrigger
 
 from .config import settings as cfg
 from .models import ProjectInfo, TaskInfo, TaskStatus
@@ -28,7 +31,9 @@ def list_tasks():
 
 
 def clone_project(url: str, name: str | None = None):
-    project_name = name if name else url.split("/")[-1]
+    project_name = name or url.rstrip("/").rsplit("/", 1)[-1]
+    if project_name in {"", ".", ".."} or "/" in project_name or "\\" in project_name:
+        raise ValueError("Use a project name without path separators.")
 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -37,7 +42,8 @@ def clone_project(url: str, name: str | None = None):
 
     if project_name in project_db:
         project_info: ProjectInfo = project_db[project_name]
-        project_info.url = url
+        if project_info.url != url:
+            raise errors.ProjectConflictError(f"Project '{project_name}' already uses a different repository URL.")
         project_info.project_path = str(project_path)
         project_info.upgrade_at = created_at
     else:
@@ -72,10 +78,10 @@ def remove_project(project_name: str):
     if not project_info:
         raise errors.ProjectNotFoundError(project_name)
 
-    # TODO: 这里需要删除定时任务,或者对存在定时任务的工程报错。
+    if any(task.project_name == project_name for task in task_db.values()):
+        raise errors.ProjectHasTasksError(project_name)
 
-    base_path = cfg.PROJECT_PATH
-    project_path = base_path / project_info.name
+    project_path = Path(project_info.project_path)
     _logger.debug(f"remove project: {project_path},absolute: {project_path.absolute()}")
     if project_path.exists():
         if project_path.is_file():
@@ -96,28 +102,30 @@ def get_project_config(project_name: str):
         raise errors.ProjectNotFoundError(project_name)
 
     project_path = Path(project_info.project_path)
-    for config_file in project_path.glob("config.*"):
-        return config_file
+    if project_path.is_file():
+        project_path = project_path.parent
+    for config_file in sorted(project_path.glob("config.*")):
+        if config_file.is_file() and config_file.suffix.lower() in {".toml", ".yaml", ".yml"}:
+            return config_file
     return project_path / "config.yaml"
 
 
 def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0):
-    if project_name not in project_db:
+    project_info = project_db.get(project_name)
+    if project_info is None:
         raise errors.ProjectNotFoundError(project_name)
+    previous = task_db.get(name)
+    if previous is None and (name in {"", ".", ".."} or "/" in name or "\\" in name):
+        raise ValueError("Use a task name without path separators.")
+    if not shlex.split(cmd):
+        raise ValueError("Enter a command.")
+    trigger = scheduler.parse_trigger(cron)
 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    project_info: ProjectInfo = project_db[project_name]
-
-    if name in task_db:
-        task_info: TaskInfo = task_db[name]
-        if task_info.project_name != project_name:
+    if previous is not None:
+        if previous.project_name != project_name:
             raise errors.SetTaskError(name)
-
-        task_info.cron = cron
-        task_info.command = cmd
-        task_info.upgrade_at = created_at
-        task_info.timeout = timeout
-        scheduler.remove_job(name)
+        task_info = previous.model_copy(update={"cron": cron, "command": cmd, "upgrade_at": created_at, "timeout": timeout})
     else:
         task_info = TaskInfo(
             name=name,
@@ -130,49 +138,76 @@ def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0
             timeout=timeout,
         )
 
-    if name in task_dict:
-        task = task_dict[name]
-        task.cmd = cmd
-        task.timeout = timeout
-        task.project_path = Path(project_info.project_path)
-    else:
-        task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path, timeout=task_info.timeout)
-        task_dict[name] = task
-
-    scheduler.add_job(func=task.run, trigger=task_info.cron, job_id=name)
-
     task_db[name] = task_info
+    try:
+        job = scheduler.get_job(name) if previous is not None and previous.cron == cron else None
+        if job is not None:
+            job.modify(kwargs={"command": cmd, "timeout": timeout})
+        else:
+            _register_task(task_info, project_info, trigger)
+    except Exception:
+        if previous is None:
+            del task_db[name]
+        else:
+            task_db[name] = previous
+        raise
+    return task_info
+
+
+def _register_task(task_info: TaskInfo, project_info: ProjectInfo, trigger: BaseTrigger):
+    name = task_info.name
+    task = task_dict.get(name)
+    if task is None:
+        task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path, timeout=task_info.timeout)
+
+    scheduler.add_job(
+        func=task.run,
+        trigger=trigger,
+        job_id=name,
+        paused=task_info.status == TaskStatus.PAUSED,
+        replace_existing=True,
+        kwargs={"command": task_info.command, "timeout": task_info.timeout},
+    )
+    task_dict[name] = task
 
 
 def remove_task(task_name: str):
     if task_name not in task_db:
         raise errors.TaskNotFoundError(task_name)
 
-    scheduler.remove_job(task_name)
+    task = task_dict.get(task_name)
+    if task is not None:
+        task.disable()
+    if scheduler.get_job(task_name) is not None:
+        scheduler.remove_job(task_name)
 
-    del task_dict[task_name]
+    task_dict.pop(task_name, None)
     del task_db[task_name]
 
 
 def start_task(task_name: str):
-    if task_name not in task_db:
-        raise errors.TaskNotFoundError(task_name)
-    task_info: TaskInfo = task_db[task_name]
-    task_info.status = TaskStatus.STARTED
-    scheduler.resume_job(task_name)
-    task_info.upgrade_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    task_db[task_name] = task_info
-    return task_info
+    return _set_task_status(task_name, TaskStatus.STARTED)
 
 
 def pause_task(task_name: str):
-    if task_name not in task_db:
+    return _set_task_status(task_name, TaskStatus.PAUSED)
+
+
+def _set_task_status(task_name: str, status: TaskStatus):
+    previous = task_db.get(task_name)
+    if previous is None:
         raise errors.TaskNotFoundError(task_name)
-    task_info: TaskInfo = task_db[task_name]
-    task_info.status = TaskStatus.PAUSED
-    scheduler.pause_job(task_name)
-    task_info.upgrade_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    task_info = previous.model_copy(update={"status": status, "upgrade_at": updated_at})
     task_db[task_name] = task_info
+    try:
+        if status == TaskStatus.PAUSED:
+            scheduler.pause_job(task_name)
+        else:
+            scheduler.resume_job(task_name)
+    except Exception:
+        task_db[task_name] = previous
+        raise
     return task_info
 
 
@@ -181,7 +216,7 @@ def run_task(task_name: str):
         raise errors.TaskNotFoundError(task_name)
     task_info: TaskInfo = task_db[task_name]
 
-    scheduler.run_job(task_name, paused=(task_info.status == TaskStatus.PAUSED))
+    scheduler.run_job(task_name)
 
     return task_info
 
@@ -208,34 +243,28 @@ def sync_project():
     for task_name, task_info in task_db.items():
         project_name = task_info.project_name
         if project_name not in project_db:
-            del task_db[task_name]
+            remove_task(task_name)
 
 
 def init_task():
-    UvTask.python_upgrade()
-    UvTask.cache_prune()
-    for task_name, task_info in task_db.items():
-        if task_info.project_name not in project_db:
-            continue
-
-        # 如果任务已存在，不添加，避免重新加载时的冲突
-        if task_name in [job.id for job in scheduler.jobs]:
-            _logger.error(f"task {task_name} already exists, removing and adding again")
-            continue
-
-        project_info: ProjectInfo = project_db[task_info.project_name]
-        task = UvTask(name=task_name, cmd=task_info.command, project_path=project_info.project_path, timeout=task_info.timeout)
-        task_dict[task_name] = task
-
-        scheduler.add_job(
-            func=task.run, trigger=task_info.cron, job_id=task_name, paused=(task_info.status == TaskStatus.PAUSED)
-        )
+    sync_task()
 
 
 def sync_task():
-    tasks = set(task_db.keys())
-    jobs = set(job.id for job in scheduler.jobs)
-    for task_name in tasks - jobs:
-        del task_db[task_name]
+    tasks = set(task_db)
+    jobs = {job.id for job in scheduler.jobs}
     for job_name in jobs - tasks:
         scheduler.remove_job(job_name)
+    for task_name in tasks - jobs:
+        task_info = task_db[task_name]
+        project_info = project_db.get(task_info.project_name)
+        if project_info is None:
+            _logger.warning("Task %s has no project %s", task_name, task_info.project_name)
+            continue
+        try:
+            if not shlex.split(task_info.command):
+                raise ValueError("Enter a command.")
+            trigger = scheduler.parse_trigger(task_info.cron)
+            _register_task(task_info, project_info, trigger)
+        except (ValueError, OSError) as exc:
+            _logger.warning("Could not register task %s: %s", task_name, exc)

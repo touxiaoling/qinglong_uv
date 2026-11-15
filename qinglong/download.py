@@ -1,6 +1,6 @@
 from pathlib import Path
 import logging
-import httpx
+import httpx2
 from git import Repo
 from .config import settings as cfg
 
@@ -11,7 +11,7 @@ class FileDownloader:
     def __init__(self, url, filepath, cookies=None):
         self.url = url
         self.filepath = Path(filepath)
-        self.session = httpx.Client()
+        self.session = httpx2.Client()
         self.session.headers.update(cfg.DOWNLOAD_HEADERS)
         if cookies:
             self.session.cookies.update(cookies)
@@ -35,4 +35,4 @@ class ProjectDownloder:
             repo = Repo.clone_from(self.url, self.projectpath, depth=1)
         else:
             repo = Repo(self.projectpath)
-            repo.remotes.origin.pull()
+            repo.remotes.origin.pull(ff_only=True)

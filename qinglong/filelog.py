@@ -25,7 +25,7 @@ class RotatingLogFile:
         self.buffer_lines = buffer_lines
 
         # 确保日志目录存在
-        self.filename.parent.mkdir(exist_ok=True)
+        self.filename.parent.mkdir(parents=True, exist_ok=True)
         # 打开日志文件
         self._file: TextIO | None = None
 
@@ -36,7 +36,7 @@ class RotatingLogFile:
         for i in range(self.backup_count + 1):
             backup_file = self._backup_file(i)
             if not backup_file.exists():
-                break
+                continue
             lines.extend(reversed(backup_file.read_text(encoding=self.encoding).splitlines()))
             if len(lines) >= hint:
                 break
@@ -72,9 +72,10 @@ class RotatingLogFile:
             if src.exists():
                 src.replace(dst)
 
-        # 重命名当前日志文件为.1
-        first_backup = self._backup_file(1)
-        self.filename.replace(first_backup)
+        if self.backup_count:
+            self.filename.replace(self._backup_file(1))
+        else:
+            self.filename.unlink()
 
         # 重新打开日志文件
         self._file = self._open_file()
@@ -91,16 +92,16 @@ class RotatingLogFile:
         elif self._file is None or self._file.closed:
             self._file = self._open_file()
 
-        self.buffer.appendleft(message)
         file = self._file
         if file is None:
             file = self._open_file()
             self._file = file
         file.write(message + "\n")
         file.flush()
+        self.buffer.appendleft(message)
 
     def readlines(self, limit=1000):
-        return islice(self.buffer, limit)
+        return islice(self.buffer.copy(), limit)
 
     def flush(self):
         """刷新文件缓冲区"""

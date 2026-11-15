@@ -36,23 +36,18 @@ TEST_CRON = "*/5 * * * *"
 TEST_CMD = "echo 'test'"
 
 
-def _clear_scheduler_jobs():
-    for job in list(scheduler.jobs):
-        scheduler.remove_job(job.id)
-
-
 @pytest.fixture(autouse=True)
 def setup_teardown():
     """每个测试前后的设置和清理"""
+    scheduler.start()
     project_db.clear()
     task_db.clear()
     api_module.task_dict.clear()
-    _clear_scheduler_jobs()
     yield
+    scheduler.shutdown()
     project_db.clear()
     task_db.clear()
     api_module.task_dict.clear()
-    _clear_scheduler_jobs()
 
 
 def _sample_project_info(project_path: str) -> ProjectInfo:
@@ -117,17 +112,15 @@ def test_clone_project_new(mock_downloader_cls, tmp_path, monkeypatch):
 
 
 @patch("qinglong.api.ProjectDownloder")
-def test_clone_project_updates_existing(mock_downloader_cls, tmp_path, monkeypatch):
+def test_clone_project_rejects_different_url_for_existing_project(mock_downloader_cls, tmp_path, monkeypatch):
     monkeypatch.setattr(api_module.cfg, "PROJECT_PATH", tmp_path)
     project_db[TEST_PROJECT_NAME] = _sample_project_info(str(tmp_path / TEST_PROJECT_NAME))
-    mock_inst = MagicMock()
-    mock_downloader_cls.return_value = mock_inst
-
     new_url = "https://github.com/test/other.git"
-    clone_project(new_url, TEST_PROJECT_NAME)
+    with pytest.raises(errors.ProjectConflictError):
+        clone_project(new_url, TEST_PROJECT_NAME)
 
-    assert project_db[TEST_PROJECT_NAME].url == new_url
-    mock_inst.download.assert_called_once()
+    assert project_db[TEST_PROJECT_NAME].url == TEST_PROJECT_URL
+    mock_downloader_cls.return_value.download.assert_not_called()
 
 
 @patch("qinglong.api.ProjectDownloder")
@@ -204,11 +197,12 @@ def test_get_project_config_prefers_config_file(tmp_path):
     pdir = tmp_path / "proj"
     pdir.mkdir()
     (pdir / "config.json").write_text("{}")
+    (pdir / "config.toml").write_text("test = true")
     project_db["cfgproj"] = _sample_project_info(str(pdir))
 
     cfg_path = get_project_config("cfgproj")
 
-    assert cfg_path == pdir / "config.json"
+    assert cfg_path == pdir / "config.toml"
 
 
 def test_get_project_config_fallback_yaml(tmp_path):
@@ -289,7 +283,7 @@ def test_run_task_when_paused(tmp_path, monkeypatch):
 
     with patch.object(scheduler, "run_job") as mock_run:
         run_task(TEST_TASK_NAME)
-        mock_run.assert_called_once_with(TEST_TASK_NAME, paused=True)
+        mock_run.assert_called_once_with(TEST_TASK_NAME)
 
 
 def test_start_task_not_found():
@@ -360,36 +354,28 @@ def test_get_task_logs_delegates_to_uvtask(tmp_path, monkeypatch):
     mock_task.get_logs.assert_called_once_with(limit=10)
 
 
-@patch.object(UvTask, "cache_prune")
-@patch.object(UvTask, "python_upgrade")
-def test_init_task_skips_when_project_missing(mock_upgrade, mock_prune, tmp_path, monkeypatch):
+def test_init_task_skips_when_project_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(api_module.cfg, "PROJECT_PATH", tmp_path)
     task_db[TEST_TASK_NAME] = _sample_task_info(project_name="no-such-project")
 
     init_task()
 
     assert TEST_TASK_NAME not in api_module.task_dict
+    assert TEST_TASK_NAME in task_db
 
 
-@patch.object(UvTask, "cache_prune")
-@patch.object(UvTask, "python_upgrade")
-def test_init_task_loads_jobs(mock_upgrade, mock_prune, tmp_path, monkeypatch):
+def test_init_task_loads_jobs(tmp_path, monkeypatch):
     monkeypatch.setattr(api_module.cfg, "PROJECT_PATH", tmp_path)
     project_db[TEST_PROJECT_NAME] = _sample_project_info(str(tmp_path / TEST_PROJECT_NAME))
     task_db[TEST_TASK_NAME] = _sample_task_info(status=TaskStatus.PAUSED)
 
     init_task()
 
-    mock_upgrade.assert_called_once()
-    mock_prune.assert_called_once()
     assert TEST_TASK_NAME in api_module.task_dict
-    job_ids = [j.id for j in scheduler.jobs]
-    assert TEST_TASK_NAME in job_ids
+    assert scheduler.get_job(TEST_TASK_NAME).next_run_time is None
 
 
-@patch.object(UvTask, "cache_prune")
-@patch.object(UvTask, "python_upgrade")
-def test_init_task_skips_when_job_already_registered(mock_upgrade, mock_prune, tmp_path, monkeypatch):
+def test_init_task_skips_when_job_already_registered(tmp_path, monkeypatch):
     monkeypatch.setattr(api_module.cfg, "PROJECT_PATH", tmp_path)
     project_db[TEST_PROJECT_NAME] = _sample_project_info(str(tmp_path / TEST_PROJECT_NAME))
     set_task(TEST_TASK_NAME, TEST_PROJECT_NAME, TEST_CRON, TEST_CMD)
@@ -410,13 +396,14 @@ def test_sync_project_removes_tasks_for_missing_project():
     assert TEST_TASK_NAME not in task_db
 
 
-def test_sync_task_removes_task_without_scheduler_job():
+def test_sync_task_restores_task_without_scheduler_job():
     project_db[TEST_PROJECT_NAME] = _sample_project_info("/p")
     task_db[TEST_TASK_NAME] = _sample_task_info()
 
     sync_task()
 
-    assert TEST_TASK_NAME not in task_db
+    assert TEST_TASK_NAME in task_db
+    assert scheduler.get_job(TEST_TASK_NAME) is not None
 
 
 def test_sync_task_removes_orphan_scheduler_job():

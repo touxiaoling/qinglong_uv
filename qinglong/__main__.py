@@ -1,7 +1,11 @@
 import logging
-from qinglong.ui import MainPage
+import uvicorn
 
-if __name__ in {"__main__", "__mp_main__"}:
+
+def main():
     logging.basicConfig(level=logging.INFO)
-    main_page = MainPage()
-    main_page.start()
+    uvicorn.run("qinglong.web:app", host="0.0.0.0", port=80, workers=1)
+
+
+if __name__ == "__main__":
+    main()

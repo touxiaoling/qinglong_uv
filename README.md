@@ -1,7 +1,7 @@
 # Qinglong-UV
 
-A lightweight task panel built with `uv` + `NiceGUI`, similar in spirit to Qinglong and currently focused on **scheduled execution for Python projects**.
-一个基于 `uv` + `NiceGUI` 的轻量任务面板，定位类似青龙，当前专注于 **Python 项目定时执行**。
+A lightweight Vue + FastAPI task panel for **scheduled execution of Python projects with uv**.
+基于 Vue + FastAPI 的轻量任务面板，使用 uv 定时运行 Python 项目。
 
 Core idea: clone Git projects locally, initialize and run tasks with `uv`, and manage projects, tasks, and logs in a Web UI.
 核心思路：把 Git 项目拉到本地后，用 `uv` 初始化并执行任务，通过 Web 页面统一管理项目、任务和日志。
@@ -17,35 +17,31 @@ Core idea: clone Git projects locally, initialize and run tasks with `uv`, and m
 ### 任务管理 | Task Management
 - 为项目创建定时任务（支持 crontab） | Create scheduled tasks per project (crontab supported)
 - 也支持用纯数字秒数作为间隔触发（例如 `60`） | Also supports pure integer seconds as interval triggers (e.g. `60`)
-- 支持 `Start` / `Pause` / `Run` / `Kill` / `Remove` / `Sync` | Supports `Start` / `Pause` / `Run` / `Kill` / `Remove` / `Sync`
-- 支持实时查看任务日志（页面每 2 秒刷新） | Real-time task logs (refresh every 2 seconds in UI)
+- 可暂停或恢复调度、立即运行、停止进程、删除任务和同步任务注册表 | Pause or resume schedules, run immediately, stop processes, delete tasks, and sync the task registry
+- 任务详情分别显示调度状态、进程状态和下次运行时间，日志面板打开时每 2 秒刷新 | Task details show schedule state, process state, and next run time. The visible log pane refreshes every 2 seconds
 
 ### 运行机制 | Runtime Behavior
-- 启动时会执行 | On startup:
-  - `uv python upgrade`
-  - `uv cache prune --force`
-- 任务首次运行某项目时会执行（每个项目仅一次） | On first task run per project (once per project):
-  - `uv venv --clear`
-  - `uv sync`
 - 任务实际执行命令格式：`uv run <你的命令>` | Actual execution format: `uv run <your command>`
+- 由 `uv run` 按项目配置和锁文件准备运行环境 | `uv run` prepares the environment using the project's configuration and lockfile
+- 每次运行记录退出码。在 Linux 和 macOS 上，超时和手动停止会终止任务进程组。 | Each run records its exit code. On Linux and macOS, a timeout or manual stop terminates the task's process group.
 
 ## 环境要求 | Requirements
 
 - `uv`（必需） | `uv` (required)
 - `git`（克隆/更新项目必需） | `git` (required for clone/pull)
+- Node.js 24 LTS 和 npm（本地前端构建和开发） | Node.js 24 LTS and npm (local frontend builds and development)
 - 操作系统可正常运行 `uv` 与 Python 子进程 | OS environment capable of running `uv` and Python subprocesses
 
-> 项目当前声明的 Python 版本为 `3.14`（见 `pyproject.toml` 的 `requires-python = "==3.14.*"`）。
-> Current declared Python version is `3.14` (see `pyproject.toml`: `requires-python = "==3.14.*"`).
+> 面板使用 Python 3.15.2（见 `.python-version`）。各任务项目可声明自己的 Python 版本。 | The panel uses Python 3.15.2 (see `.python-version`). Each task project can declare its own Python version.
 
 ## 快速开始 | Quick Start
 
-### 1) 安装依赖 | Install Dependencies
+### 1) 安装依赖并构建页面 | Install dependencies and build the UI
 
 ```bash
-git clone <your-repo-url>
-cd qinglong-uv
-uv sync
+uv sync --locked
+npm --prefix frontend ci
+npm --prefix frontend run build
 ```
 
 ### 2) 启动服务 | Start Service
@@ -56,24 +52,24 @@ uv sync
 uv run -m qinglong
 ```
 
-- 默认监听：`0.0.0.0:80` | Default bind: `0.0.0.0:80`
+- 浏览器访问 `http://localhost`，API 文档位于 `/api/docs` | Open `http://localhost`. API docs are at `/api/docs`
+- FastAPI 启动和手动同步时从 SQLite 恢复调度及暂停状态，部署使用单个 worker | Startup and manual sync restore schedules and paused state from SQLite. Deploy with a single worker
+- 任务通过 `uv run` 按需同步依赖并执行，超时覆盖整个过程 | `uv run` syncs dependencies as needed and runs the command within the task timeout
 
-开发调试方式（热重载） | Development mode (hot reload):
+开发时在两个终端分别运行 | For development, run in separate terminals:
 
 ```bash
 uv run main.py
+npm --prefix frontend run dev
 ```
 
-- 默认监听：`localhost:8080` | Default bind: `localhost:8080`
+- 打开 Vite 输出的地址。它会把 `/api` 转发到 `127.0.0.1:8080` | Open the URL printed by Vite. It proxies `/api` to `127.0.0.1:8080`
 
 ### 3) 使用 Web 界面 | Use the Web UI
 
-1. 在 `Project` 区域点击 `Clone`，填写项目名和 Git URL | Click `Clone` in `Project`, then input project name and Git URL
-2. 在 `Task` 区域点击 `Set`，填写 | Click `Set` in `Task`, then fill:
-   - `Name`：任务名（全局唯一） | Task name (globally unique)
-   - `Cron`：crontab 表达式，或秒级整数 | Crontab expression or integer seconds
-   - `Command`：执行命令（如 `main.py`、`python app.py`） | Command to run (e.g. `main.py`, `python app.py`)
-3. 在任务列表中使用 `Start/Pause/Run/Kill/Logs` 管理和观察任务 | Use `Start/Pause/Run/Kill/Logs` in task table to manage and monitor tasks
+1. 点击侧栏 `Projects` 旁的 `+` 克隆 Git 项目。选中项目后可拉取更新或通过工具栏菜单编辑配置。 | Use `+` beside `Projects` to clone a Git project. Select a project to pull updates or edit its configuration from the toolbar menu.
+2. 点击 `New Task`，填写全局唯一的任务名、五字段 cron 表达式或正整数秒数、执行命令和超时。 | Use `New Task` to enter a globally unique name, five-field cron expression or positive interval in seconds, command, and timeout.
+3. 选择任务后用 `Run Now` 立即运行，在 `Logs` 查看输出。暂停调度后仍可手动运行一次。 | Select a task, click `Run Now`, and view its output in `Logs`. Paused schedules still allow a manual run.
 
 ## Docker 部署 | Docker Deployment
 
@@ -86,7 +82,8 @@ docker compose up -d --build
 
 - 默认容器内部端口为 `80` | Default container port: `80`
 - `docker-compose.override.yaml` 示例将本机 `8080` 映射到容器 `80` | Example override maps host `8080` -> container `80`
-- 数据目录挂载：`./data:/code/data` | Data volume: `./data:/code/data`
+- 镜像构建时打包 Vue 页面，由 FastAPI 提供，运行时共用一个端口。 | The Docker build bundles Vue and FastAPI serves it on the same port as the API.
+- 数据目录挂载：`./data:/code/data`，原有数据可直接使用。 | Data volume: `./data:/code/data`. Existing data can be used directly.
 
 ## 配置说明 | Configuration
 
@@ -108,8 +105,9 @@ qinglong/
   api.py         # 项目与任务核心逻辑 | Core project/task logic
   scheduler.py   # APScheduler 封装 | APScheduler wrapper
   uvtask.py      # uv 任务执行与进程控制 | uv task execution and process control
-  ui.py          # NiceGUI 页面 | NiceGUI interface
+  web.py         # FastAPI 接口与静态页面 | FastAPI endpoints and static frontend
   config.py      # 配置项 | Settings
+frontend/        # Vue 页面 | Vue frontend
 data/
   db/            # 本地数据库文件 | Local DB files
   projects/      # 克隆下来的项目 | Cloned projects
@@ -119,15 +117,14 @@ data/
 ## 已知限制 | Known Limitations
 
 - 当前只面向 Python/uv 工作流，不支持其他运行时 | Currently focused on Python/uv workflows only
-- 删除项目时不会自动联动删除关联任务，请先处理任务再删项目 | Removing a project does not automatically remove related tasks
+- 删除项目之前须先删除关联任务 | Delete a project's tasks before removing the project
 - 任务命令会被拼接为 `uv run ...`，复杂 shell 语法建议封装成脚本再调用 | Commands are wrapped as `uv run ...`; put complex shell logic into scripts
 
 ## Roadmap
 
-- [ ] Git 项目自动更新（定时 / webhook） | Auto-update Git projects (scheduled / webhook)
-- [ ] 通知系统集成（可考虑 [apprise](https://github.com/caronc/apprise)） | Notification integration (consider [apprise](https://github.com/caronc/apprise))
-- [ ] 多项目联动与级联触发 | Cross-project linkage and cascading triggers
-- [ ] 统一通知 SDK | Unified notification SDK
+- [ ] 运行历史：记录触发来源、起止时间、结果和对应日志。 | Run history with trigger source, start and end times, outcome, and per-run logs.
+- [ ] 失败通知：按任务订阅失败和超时，支持重复失败时合并通知。 | Per-task failure and timeout alerts with deduplication.
+- [ ] 调度预览：保存前展示时区和接下来几次触发时间。 | Schedule preview with the time zone and next few fire times before saving.
 
 ## 贡献 | Contributing
 

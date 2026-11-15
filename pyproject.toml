@@ -3,37 +3,35 @@ name = "qinglong-uv"
 version = "0.1.1"
 description = "一个使用uv管理Python版本和包的类qinglong定时运行面板，支持运行Python代码。A Qinglong-like panel for managing Python tasks using uv package manager, supporting Python code execution."
 readme = "README.md"
-requires-python = "==3.14.*"
-license = { text = "MIT" }
+requires-python = "==3.15.*"
+license = "MIT"
 authors = [{ name = "tomin" }]
-keywords = ["qinglong", "uv", "task-scheduler", "python", "nicegui"]
+keywords = ["qinglong", "uv", "task-scheduler", "python", "fastapi", "vue"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "apscheduler>=3.11.0",
+    "apscheduler>=3.11.2,<4",
+    "fastapi>=0.136.1",
     "gitpython>=3.1.44",
-    "httpx[http2]>=0.28.1",
+    "httpx2>=2.16.0",
     "loguru>=0.7.3",
-    "nicegui>=2.18.0",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.8.1",
     "pyyaml>=6.0.2",
     "shelvez>=0.2.1",
+    "uvicorn>=0.46.0",
 ]
 
 [dependency-groups]
 dev = [
-    "jurigged>=0.6.0",
     "pre-commit>=4.2.0",
-    "pydantic>=2.13.4",
     "pytest>=8.3.5",
     "pytest-cov>=7.1.0",
-    "pywebview>=5.4",
     "ruff>=0.15.12",
     "ty>=0.0.35",
 ]
@@ -41,17 +39,19 @@ dev = [
 [tool.setuptools]
 packages = ["qinglong"]
 
+[tool.setuptools.package-data]
+qinglong = ["web_dist/index.html", "web_dist/assets/*"]
+
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
 [tool.uv]
-no-binary-package = ["av"]
 package = true
 
 [tool.ruff]
 line-length = 128
-target-version = "py313"
+target-version = "py315"
 exclude = [
     ".bzr",
     ".direnv",
@@ -82,6 +82,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 ignore = ["F401"]
 
 [tool.pytest.ini_options]

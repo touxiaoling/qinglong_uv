@@ -7,10 +7,9 @@ from qinglong.scheduler import Scheduler
 @pytest.fixture
 def scheduler():
     scheduler = Scheduler()
+    scheduler.start()
     yield scheduler
-    # 清理所有任务
-    for job in scheduler.jobs:
-        scheduler.remove_job(job.id)
+    scheduler.shutdown()
 
 
 def test_add_job(scheduler: Scheduler):

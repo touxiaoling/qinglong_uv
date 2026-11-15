@@ -1,11 +1,15 @@
-import os
-import pytest
-import tempfile
-import subprocess
+import shlex
+import sys
 import time
 from pathlib import Path
+
+import pytest
+
 from qinglong.uvtask import UvTask
 from qinglong.config import settings as cfg
+
+
+PYTHON_ARGS = f"--python {shlex.quote(sys._base_executable)}"
 
 
 @pytest.fixture
@@ -31,7 +35,7 @@ def temp_project_path(tmp_path: Path):
 @pytest.fixture
 def uvtask(temp_project_path):
     """创建一个 UvTask 实例"""
-    return UvTask(name="test_task", cmd="main.py", project_path=str(temp_project_path), uv_args="--python 3.13")
+    return UvTask(name="test_task", cmd="main.py", project_path=str(temp_project_path), uv_args=PYTHON_ARGS)
 
 
 def test_uvtask_initialization(uvtask: UvTask, temp_project_path: Path):
@@ -39,38 +43,46 @@ def test_uvtask_initialization(uvtask: UvTask, temp_project_path: Path):
     assert uvtask.name == "test_task"
     assert uvtask.cmd == "main.py"
     assert uvtask.project_path == Path(temp_project_path)
-    assert uvtask.uv_args == "--python 3.13"
-    assert uvtask.max_log_size == 10 * 1024 * 1024
+    assert uvtask.uv_args == PYTHON_ARGS
+    assert uvtask.log_file.max_size == cfg.TASK_LOG_MAX_BYTES
+    assert uvtask.log_file.backup_count == cfg.TASK_LOG_BACKUP_COUNT
     assert uvtask.timeout == 0
 
 
 def test_uvtask_run(uvtask: UvTask):
     """测试命令运行和日志记录"""
-    uvtask.run()
-    logs = list(uvtask.get_logs())
-    for log in logs:
-        assert "Hello, World!" in log
-        break
+    assert uvtask.run() == 0
+    assert any("Hello, World!" in line for line in uvtask.get_logs())
 
 
 def test_uvtask_with_file_project_path(tmp_path: Path):
     """测试使用文件路径作为项目路径"""
     test_file = tmp_path / "test.py"
-    test_file.write_text("print('test')")
+    test_file.write_text("print('file project ran')")
 
-    task = UvTask(name="file_task", cmd="python test.py", project_path=str(test_file))
-    task.run()
-    for log in task.get_logs():
-        assert "test" in log
-        break
+    task = UvTask(name="file_task", cmd="python test.py", project_path=str(test_file), uv_args=PYTHON_ARGS)
+    assert task.run() == 0
+    assert any("file project ran" in line for line in task.get_logs())
 
 
-def test_uvtask_timeout(temp_project_path: Path):
-    """测试任务超时"""
+def test_script_checkout_ignores_parent_project(tmp_path: Path):
+    (tmp_path / "pyproject.toml").write_text("[invalid\n")
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "main.py").write_text("print('standalone script ran')")
+
+    task = UvTask(name="standalone", cmd="main.py", project_path=str(checkout), uv_args=PYTHON_ARGS)
+
+    assert task.run() == 0
+    assert any("standalone script ran" in line for line in task.get_logs())
+
+
+def test_uvtask_timeout_without_output(temp_project_path: Path):
     task = UvTask(
         name="timeout_task",
-        cmd='python -c "import time; [(print(i, flush=True), time.sleep(0.2)) for i in range(20)]"',
+        cmd='python -c "import time; time.sleep(10)"',
         project_path=str(temp_project_path),
+        uv_args=PYTHON_ARGS,
         timeout=1,
     )
     start = time.monotonic()
@@ -78,3 +90,4 @@ def test_uvtask_timeout(temp_project_path: Path):
     elapsed = time.monotonic() - start
     assert elapsed < 3
     assert not task.is_running
+    assert any("Timed out after 1s" in line for line in task.get_logs())
