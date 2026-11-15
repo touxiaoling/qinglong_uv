@@ -2,6 +2,7 @@ services:
   qinglong-uv:
     build:
       context: ./
+      pull: true
     environment:
       - TZ=Asia/Shanghai
     volumes:

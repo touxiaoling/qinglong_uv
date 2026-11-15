@@ -123,6 +123,7 @@ class RotatingLogFile:
         else:
             log_entry = f"[{timestamp}]: {message}"
         self.write(log_entry)
+        return log_entry
 
     def close(self):
         """关闭日志文件"""

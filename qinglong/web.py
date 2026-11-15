@@ -2,7 +2,7 @@ from asyncio import gather
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
+from threading import Lock, TIMEOUT_MAX
 import logging
 import tomllib
 from typing import Annotated
@@ -17,9 +17,10 @@ from git import GitCommandError
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import api, errors
-from .database import task_db
-from .models import ProjectInfo, TaskInfo
+from . import api, errors, notify, runs
+from .database import project_db, task_db
+from .download import git_revision
+from .models import ProjectInfo, RunDetail, RunInfo, TaskInfo
 from .scheduler import scheduler
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,11 @@ class ProjectConfig(BaseModel):
     content: str
 
 
+class ProjectRevision(BaseModel):
+    branch: str | None
+    commit: str | None
+
+
 class ConfigInput(BaseModel):
     content: str
 
@@ -47,7 +53,8 @@ class ConfigInput(BaseModel):
 class TaskSettings(BaseModel):
     cron: NonEmpty
     command: NonEmpty
-    timeout: int = Field(default=0, ge=0)
+    timeout: int = Field(default=0, ge=0, le=int(TIMEOUT_MAX))
+    notify_on_failure: bool | None = None
 
 
 class TaskInput(TaskSettings):
@@ -59,16 +66,19 @@ class TaskView(TaskInfo):
     is_running: bool
     next_run_at: datetime | None
     registered: bool
+    latest_run: RunInfo | None
 
 
 def task_view(task: TaskInfo) -> TaskView:
     job = scheduler.get_job(task.name)
     runner = api.task_dict.get(task.name)
+    latest = runs.list_runs(task.history_id, limit=1)
     return TaskView(
         **task.model_dump(),
         is_running=runner is not None and runner.is_running,
         next_run_at=job.next_run_time if job else None,
         registered=job is not None,
+        latest_run=latest[0] if latest else None,
     )
 
 
@@ -103,6 +113,16 @@ def read_config(name: str) -> ProjectConfig:
         return ProjectConfig(filename=path.name, content=path.read_text(encoding="utf-8") if path.exists() else "")
 
 
+@router.get("/projects/{name}/revision")
+def project_revision(name: str) -> ProjectRevision:
+    with project_changes:
+        project = project_db.get(name)
+        if project is None:
+            raise errors.ProjectNotFoundError(name)
+        branch, commit = git_revision(Path(project.project_path))
+        return ProjectRevision(branch=branch, commit=commit)
+
+
 @router.put("/projects/{name}/config", status_code=204)
 def save_config(name: str, data: ConfigInput) -> None:
     with project_changes:
@@ -125,7 +145,9 @@ def create_task(data: TaskInput) -> TaskView:
     with task_changes:
         if data.name in task_db:
             raise HTTPException(409, "A task with that name already exists.")
-        return task_view(api.set_task(data.name, data.project_name, data.cron, data.command, data.timeout))
+        return task_view(
+            api.set_task(data.name, data.project_name, data.cron, data.command, data.timeout, data.notify_on_failure)
+        )
 
 
 @router.put("/tasks/{name}")
@@ -134,7 +156,7 @@ def update_task(name: str, data: TaskSettings) -> TaskView:
         task = task_db.get(name)
         if task is None:
             raise errors.TaskNotFoundError(name)
-        return task_view(api.set_task(name, task.project_name, data.cron, data.command, data.timeout))
+        return task_view(api.set_task(name, task.project_name, data.cron, data.command, data.timeout, data.notify_on_failure))
 
 
 @router.post("/sync", status_code=204)
@@ -180,10 +202,33 @@ def task_logs(name: str, response: Response, limit: Annotated[int, Query(ge=1, l
         return list(reversed(list(api.get_task_logs(name, limit))))
 
 
+@router.get("/tasks/{name}/runs")
+def task_runs(name: str) -> list[RunInfo]:
+    with task_changes:
+        task = task_db.get(name)
+        if task is None:
+            raise errors.TaskNotFoundError(name)
+        return runs.list_runs(task.history_id)
+
+
+@router.get("/tasks/{name}/runs/{run_id}")
+def task_run(name: str, run_id: int) -> RunDetail:
+    with task_changes:
+        task = task_db.get(name)
+        if task is None:
+            raise errors.TaskNotFoundError(name)
+        run = runs.get_run(task.history_id, run_id) if task.history_id is not None else None
+        if run is None:
+            raise HTTPException(404, "Run not found.")
+        return run
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await run_in_threadpool(runs.interrupt_running)
     scheduler.start(paused=True)
     try:
+        notify.start()
         await run_in_threadpool(api.init_task)
         scheduler.scheduler.resume()
         yield
@@ -192,8 +237,11 @@ async def lifespan(_: FastAPI):
         try:
             await gather(*(run_in_threadpool(runner.disable, stop_running=True) for runner in api.task_dict.values()))
         finally:
-            await run_in_threadpool(scheduler.shutdown, wait=True)
-            api.task_dict.clear()
+            try:
+                await run_in_threadpool(scheduler.shutdown, wait=True)
+                api.task_dict.clear()
+            finally:
+                await run_in_threadpool(notify.shutdown)
 
 
 app = FastAPI(title="Qinglong UV", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)

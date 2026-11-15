@@ -32,11 +32,22 @@ const logError = ref('')
 const logsLoading = ref(false)
 const following = ref(true)
 const tab = ref('logs')
+const history = ref([])
+const historyError = ref('')
+const historyLoading = ref(false)
+const selectedRunId = ref(null)
+const selectedRun = ref(null)
+const runError = ref('')
+const revision = ref(null)
+const revisionError = ref('')
 const form = ref({})
 const formError = ref('')
 let projectRefresh = 0
 let taskRefresh = 0
 let logRefresh = 0
+let historyRefresh = 0
+let runRefresh = 0
+let revisionRefresh = 0
 let noticeTimer
 let pollTimer
 
@@ -58,6 +69,10 @@ const taskProjectExists = computed(() => projects.value.some(({ name }) => name 
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
 const dayFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
 const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'medium', hourCycle: 'h23' })
+const resultLabels = {
+  running: 'Running', succeeded: 'Succeeded', failed: 'Failed', timed_out: 'Timed out',
+  stopped: 'Stopped', skipped: 'Skipped', interrupted: 'Interrupted',
+}
 
 function dateLabel(value) {
   return value ? dateTime.format(new Date(value.replace(' ', 'T'))) : '—'
@@ -112,6 +127,7 @@ function selectProject(name) {
 
 function selectTask(name) {
   selectedTaskName.value = name
+  selectedRunId.value = null
   tab.value = 'logs'
   menu.value = ''
 }
@@ -172,6 +188,52 @@ async function poll() {
   await Promise.all([loadTasks(), loadLogs(), projectError.value ? loadProjects() : undefined])
 }
 
+async function loadHistory() {
+  const current = task.value
+  if (!current || tab.value !== 'history') return
+  const requestId = ++historyRefresh
+  historyLoading.value = true
+  try {
+    const data = await request(taskPath(current.name) + '/runs')
+    if (requestId !== historyRefresh) return
+    history.value = data
+    historyError.value = ''
+  } catch (error) {
+    if (requestId === historyRefresh) historyError.value = error.message
+  } finally {
+    if (requestId === historyRefresh) historyLoading.value = false
+  }
+}
+
+async function loadRun() {
+  const current = task.value
+  const id = selectedRunId.value
+  const requestId = ++runRefresh
+  selectedRun.value = null
+  runError.value = ''
+  if (!current || !id || tab.value !== 'history') return
+  try {
+    const data = await request(taskPath(current.name) + '/runs/' + id)
+    if (requestId === runRefresh) selectedRun.value = data
+  } catch (error) {
+    if (requestId === runRefresh) runError.value = error.message
+  }
+}
+
+async function openProjectDetails() {
+  const current = project.value
+  const requestId = ++revisionRefresh
+  revision.value = null
+  revisionError.value = ''
+  await openDialog('project', { ...current })
+  try {
+    const data = await request(projectPath(current.name) + '/revision')
+    if (requestId === revisionRefresh) revision.value = data
+  } catch (error) {
+    if (requestId === revisionRefresh) revisionError.value = error.message
+  }
+}
+
 function showNotice(message) {
   clearTimeout(noticeTimer)
   notice.value = message
@@ -221,11 +283,14 @@ function closeDialog() {
 }
 
 function newTask() {
-  void openDialog('task', { name: '', project_name: project.value?.name ?? projects.value[0]?.name ?? '', cron: '', command: '', timeout: 0 })
+  void openDialog('task', {
+    name: '', project_name: project.value?.name ?? projects.value[0]?.name ?? '',
+    cron: '', command: '', timeout: '', limitRuntime: false, notify_on_failure: false,
+  })
 }
 
 function editTask() {
-  void openDialog('task', { ...task.value, editing: true })
+  void openDialog('task', { ...task.value, editing: true, limitRuntime: task.value.timeout > 0, timeout: task.value.timeout || '' })
 }
 
 async function openConfig() {
@@ -251,7 +316,10 @@ function submitDialog() {
     return act(() => request('/projects', { method: 'POST', body }), 'Project ready', { ...fromDialog, reloadProjects: true })
   }
   if (dialog.value === 'task') {
-    const body = { cron: data.cron, command: data.command, timeout: data.timeout === '' ? 0 : data.timeout }
+    const body = {
+      cron: data.cron, command: data.command, timeout: data.limitRuntime ? data.timeout : 0,
+      notify_on_failure: data.notify_on_failure,
+    }
     if (!data.editing) Object.assign(body, { name: data.name, project_name: data.project_name })
     return act(async () => {
       const updated = await request(data.editing ? taskPath(data.name) : '/tasks', {
@@ -318,8 +386,33 @@ function keyboard(event) {
 }
 
 watch([() => task.value?.name, () => task.value?.registered, tab], refreshLogScope)
+watch([() => task.value?.name, tab], () => {
+  ++historyRefresh
+  history.value = []
+  historyError.value = ''
+  historyLoading.value = false
+  void loadHistory()
+})
+watch([() => task.value?.latest_run?.id, () => task.value?.latest_run?.status, () => task.value?.is_running], () => {
+  void loadHistory()
+})
+const selectedRunStatus = computed(() => history.value.find(({ id }) => id === selectedRunId.value)?.status)
+watch([() => task.value?.name, tab, selectedRunId], loadRun)
+watch(selectedRunStatus, (status, previous) => {
+  if (previous === 'running' && status && status !== previous) void loadRun()
+})
+
 onMounted(() => {
-  void loadWorkspace()
+  void loadWorkspace().then(() => {
+    const params = new URLSearchParams(window.location.search)
+    const name = params.get('task')
+    const id = Number(params.get('run'))
+    if (tasks.value.some(item => item.name === name) && Number.isSafeInteger(id) && id > 0) {
+      selectTask(name)
+      tab.value = 'history'
+      selectedRunId.value = id
+    }
+  })
   pollTimer = setInterval(poll, 2000)
   window.addEventListener('keydown', keyboard)
   document.addEventListener('visibilitychange', poll)
@@ -387,7 +480,7 @@ onBeforeUnmount(() => {
               <button :disabled="busy" @click="confirmSync"><Activity :size="15" /> Sync task registry</button>
               <template v-if="project">
                 <hr />
-                <button @click="openDialog('project', { ...project })"><Info :size="15" /> Project details</button>
+                <button @click="openProjectDetails"><Info :size="15" /> Project details</button>
                 <button :disabled="busy" @click="openConfig"><FileCode2 :size="15" /> Edit configuration</button>
                 <button :disabled="busy || scopedTasks.length > 0" :title="scopedTasks.length ? 'Delete this project’s tasks first' : undefined"
                   class="danger-text" @click="confirmProjectRemoval"><Trash2 :size="15" /> Delete project</button>
@@ -434,6 +527,9 @@ onBeforeUnmount(() => {
                   </td>
                   <td>
                     <span class="row-status"><span class="status-dot" :class="{ live: item.is_running }"></span>{{ item.is_running ? 'Running' : 'Idle' }}</span>
+                    <small class="row-result" :class="item.latest_run?.status" :title="item.latest_run?.reason || undefined">
+                      {{ item.latest_run ? 'Latest: ' + resultLabels[item.latest_run.status] : 'No runs' }}
+                    </small>
                   </td>
                   <td>
                     <time v-if="item.next_run_at" class="row-next" :datetime="item.next_run_at" :title="dateLabel(item.next_run_at)">
@@ -482,6 +578,7 @@ onBeforeUnmount(() => {
 
           <div class="detail-tabs" aria-label="Task view">
             <button :aria-pressed="tab === 'logs'" @click="tab = 'logs'"><Terminal :size="15" /> Logs</button>
+            <button :aria-pressed="tab === 'history'" @click="tab = 'history'"><Activity :size="15" /> Run History</button>
             <button :aria-pressed="tab === 'info'" @click="tab = 'info'"><Activity :size="15" /> Details</button>
           </div>
           <div v-if="tab === 'logs'" class="log-panel">
@@ -496,11 +593,41 @@ onBeforeUnmount(() => {
             </div>
             <div v-if="logError && lines.length" class="log-error" role="alert">{{ logError }}</div>
           </div>
+          <div v-else-if="tab === 'history'" class="run-history">
+            <p v-if="historyError" role="alert">{{ historyError }}</p>
+            <p v-else-if="!history.length && !selectedRunId">{{ historyLoading ? 'Loading runs…' : 'No runs recorded yet.' }}</p>
+            <div v-if="history.length" class="run-list" aria-label="Recent runs">
+              <button v-for="run in history" :key="run.id" class="run-entry"
+                :aria-pressed="selectedRunId === run.id" @click="selectedRunId = run.id">
+                <strong>{{ resultLabels[run.status] }}</strong>
+                <span>{{ run.source === 'manual' ? 'Manual' : 'Scheduled' }} · {{ dateLabel(run.scheduled_at) }}</span>
+                <small v-if="run.reason">{{ run.reason }}</small>
+              </button>
+            </div>
+            <div v-if="selectedRunId" class="run-detail">
+              <p v-if="runError" role="alert">{{ runError }}</p>
+              <template v-else-if="selectedRun">
+                <dl class="task-info">
+                  <div><dt>Result</dt><dd>{{ resultLabels[selectedRun.status] }}<span v-if="selectedRun.reason"> · {{ selectedRun.reason }}</span></dd></div>
+                  <div><dt>Trigger</dt><dd>{{ selectedRun.source === 'manual' ? 'Manual' : 'Scheduled' }} · {{ dateLabel(selectedRun.scheduled_at) }}</dd></div>
+                  <div><dt>Started</dt><dd>{{ dateLabel(selectedRun.started_at) }}</dd></div>
+                  <div><dt>Finished</dt><dd>{{ dateLabel(selectedRun.finished_at) }}</dd></div>
+                  <div><dt>Exit code</dt><dd>{{ selectedRun.exit_code ?? '—' }}</dd></div>
+                  <div><dt>Commit</dt><dd><code>{{ selectedRun.commit || '—' }}</code></dd></div>
+                </dl>
+                <pre v-if="selectedRun.output" class="run-output" tabindex="0" aria-label="Run output">{{ selectedRun.output }}</pre>
+                <p v-else-if="selectedRun.status === 'running'">Open Logs to follow this run live.</p>
+                <p v-else>No output was recorded for this run.</p>
+              </template>
+              <p v-else>Loading run…</p>
+            </div>
+          </div>
           <dl v-else class="task-info">
             <div><dt>Next run</dt><dd>{{ dateLabel(task.next_run_at) }}</dd></div>
             <div><dt>Schedule</dt><dd><code>{{ task.cron }}</code></dd></div>
             <div><dt>Command</dt><dd><code>{{ task.command }}</code></dd></div>
             <div><dt>Timeout</dt><dd>{{ task.timeout ? task.timeout + 's' : 'Unlimited' }}</dd></div>
+            <div><dt>Failure alerts</dt><dd>{{ task.notify_on_failure ? 'Enabled' : 'Off' }}</dd></div>
             <div><dt>Updated</dt><dd>{{ dateLabel(task.upgrade_at) }}</dd></div>
             <div><dt>Created</dt><dd>{{ dateLabel(task.created_at) }}</dd></div>
           </dl>
@@ -529,9 +656,12 @@ onBeforeUnmount(() => {
             <small>Enter a five-field cron expression or an interval in seconds.</small>
           </label>
           <label>Command <input v-model="form.command" required placeholder="python main.py" /></label>
-          <label>Timeout in seconds <input v-model.number="form.timeout" type="number" min="0" step="1" />
-            <small>Use 0 for no time limit.</small>
+          <label class="form-check"><input v-model="form.limitRuntime" type="checkbox" /> Stop after a time limit</label>
+          <label v-if="form.limitRuntime">Timeout in seconds <input v-model.number="form.timeout" type="number" min="1" step="1" required />
+            <small>Includes environment setup and command execution.</small>
           </label>
+          <label class="form-check"><input v-model="form.notify_on_failure" type="checkbox" /> Send failure and recovery alerts</label>
+          <small>Alerts use the webhook configured on the server.</small>
         </div>
         <div v-else-if="dialog === 'config'" class="config-body">
           <span v-if="form.loading">Loading configuration…</span>
@@ -540,6 +670,8 @@ onBeforeUnmount(() => {
         <dl v-else-if="dialog === 'project'" class="task-info project-info">
           <div><dt>Git URL</dt><dd>{{ form.url || '—' }}</dd></div>
           <div><dt>Local path</dt><dd><code>{{ form.project_path }}</code></dd></div>
+          <div><dt>Branch</dt><dd>{{ revisionError || (revision ? revision.branch || (revision.commit ? 'Detached HEAD' : '—') : 'Loading…') }}</dd></div>
+          <div><dt>Commit</dt><dd><code>{{ revision?.commit || '—' }}</code></dd></div>
           <div><dt>Updated</dt><dd>{{ dateLabel(form.upgrade_at) }}</dd></div>
           <div><dt>Created</dt><dd>{{ dateLabel(form.created_at) }}</dd></div>
         </dl>

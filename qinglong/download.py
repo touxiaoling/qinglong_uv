@@ -1,10 +1,21 @@
 from pathlib import Path
 import logging
 import httpx2
-from git import Repo
+from git import GitError, Repo
+from gitdb.exc import BadName
 from .config import settings as cfg
 
 _logger = logging.getLogger(__name__)
+
+
+def git_revision(path: Path) -> tuple[str | None, str | None]:
+    try:
+        with Repo(path) as repo:
+            head = repo.head
+            branch = None if head.is_detached else repo.active_branch.name
+            return branch, head.commit.hexsha
+    except BadName, GitError, OSError, ValueError:
+        return None, None
 
 
 class FileDownloader:

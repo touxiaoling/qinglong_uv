@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     TASK_LOG_MAX_BYTES: int = 1024 * 1024
     # 任务日志备份数量
     TASK_LOG_BACKUP_COUNT: int = 5
+    NOTIFY_WEBHOOK_URL: str = ""
+    PANEL_PUBLIC_URL: str = ""
     DEBUG: bool = True
 
     DOWNLOAD_HEADERS: dict = {

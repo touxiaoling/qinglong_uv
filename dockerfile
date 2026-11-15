@@ -1,4 +1,4 @@
-FROM node:24.22.3-bookworm-slim AS frontend
+FROM node:latest AS frontend
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -6,7 +6,7 @@ COPY frontend/index.html frontend/vite.config.js ./
 COPY frontend/src ./src
 RUN npm run build
 
-FROM lscr.io/linuxserver/ffmpeg:9.0.2-cli-ls89
+FROM lscr.io/linuxserver/ffmpeg:latest
 
 WORKDIR /code
 

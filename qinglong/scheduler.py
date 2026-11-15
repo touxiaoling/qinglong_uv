@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from apscheduler.executors.base import MaxInstancesReachedError
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job
 from apscheduler.jobstores.base import JobLookupError
@@ -9,12 +10,54 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import undefined
 
+from .models import RunSource
+from .uvtask import UvTask
+
+
+class TaskExecutor(ThreadPoolExecutor):
+    def submit_job(self, job, run_times, *, source: RunSource = "scheduled"):
+        runner = getattr(job.func, "__self__", None)
+        if not isinstance(runner, UvTask) or runner.history_id is None:
+            return super().submit_job(job, run_times)
+
+        scheduled_at = run_times[-1]
+        grace = job.misfire_grace_time
+        run = job.func
+        kwargs = job.kwargs
+
+        def execute():
+            if grace is not None and datetime.now(timezone.utc) - scheduled_at > timedelta(seconds=grace):
+                runner.record_skips(source, [scheduled_at], "Scheduled start was missed")
+                return
+            return run(scheduled_at=scheduled_at, source=source, **kwargs)
+
+        # Keep APScheduler's instance limit and execute only the latest due time.
+        if len(run_times) > 1:
+            runner.record_skips(source, run_times[:-1], "Combined with a later trigger")
+        tracked_job = Job(
+            self._scheduler,
+            id=job.id,
+            name=job.name,
+            func=execute,
+            trigger=job.trigger,
+            max_instances=job.max_instances,
+            args=(),
+            kwargs={},
+            misfire_grace_time=None,
+        )
+        try:
+            return super().submit_job(tracked_job, [scheduled_at])
+        except MaxInstancesReachedError:
+            if source == "scheduled":
+                runner.record_skips(source, [scheduled_at], "Previous run still active")
+            raise
+
 
 class Scheduler:
     def __init__(self):
         jobstores = {"default": MemoryJobStore()}
         self.scheduler = BackgroundScheduler(jobstores=jobstores)
-        self.executor = ThreadPoolExecutor()
+        self.executor = TaskExecutor()
 
     def start(self, paused=False):
         self.scheduler.add_executor(self.executor)
@@ -23,7 +66,7 @@ class Scheduler:
     def shutdown(self, wait=False):
         self.scheduler.shutdown(wait=wait)
         self.scheduler.remove_executor("default", shutdown=False)
-        self.executor = ThreadPoolExecutor()
+        self.executor = TaskExecutor()
 
     @property
     def jobs(self):
@@ -81,7 +124,7 @@ class Scheduler:
             max_instances=job.max_instances,
             misfire_grace_time=None,
         )
-        self.executor.submit_job(manual_job, [datetime.now(self.scheduler.timezone)])
+        self.executor.submit_job(manual_job, [datetime.now(self.scheduler.timezone)], source="manual")
 
 
 scheduler = Scheduler()

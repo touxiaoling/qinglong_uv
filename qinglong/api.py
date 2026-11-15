@@ -5,6 +5,7 @@ import shutil
 import logging
 import shlex
 from pathlib import Path
+from uuid import uuid4
 
 from apscheduler.triggers.base import BaseTrigger
 
@@ -110,7 +111,7 @@ def get_project_config(project_name: str):
     return project_path / "config.yaml"
 
 
-def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0):
+def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0, notify_on_failure: bool | None = None):
     project_info = project_db.get(project_name)
     if project_info is None:
         raise errors.ProjectNotFoundError(project_name)
@@ -125,7 +126,16 @@ def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0
     if previous is not None:
         if previous.project_name != project_name:
             raise errors.SetTaskError(name)
-        task_info = previous.model_copy(update={"cron": cron, "command": cmd, "upgrade_at": created_at, "timeout": timeout})
+        task_info = previous.model_copy(
+            update={
+                "cron": cron,
+                "command": cmd,
+                "upgrade_at": created_at,
+                "timeout": timeout,
+                "history_id": previous.history_id or uuid4().hex,
+                "notify_on_failure": previous.notify_on_failure if notify_on_failure is None else notify_on_failure,
+            }
+        )
     else:
         task_info = TaskInfo(
             name=name,
@@ -136,13 +146,15 @@ def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0
             upgrade_at=created_at,
             status=TaskStatus.STARTED,
             timeout=timeout,
+            history_id=uuid4().hex,
+            notify_on_failure=bool(notify_on_failure),
         )
 
     task_db[name] = task_info
     try:
         job = scheduler.get_job(name) if previous is not None and previous.cron == cron else None
         if job is not None:
-            job.modify(kwargs={"command": cmd, "timeout": timeout})
+            job.modify(kwargs=_run_settings(task_info))
         else:
             _register_task(task_info, project_info, trigger)
     except Exception:
@@ -154,11 +166,22 @@ def set_task(name: str, project_name: str, cron: str, cmd: str, timeout: int = 0
     return task_info
 
 
+def _run_settings(task_info: TaskInfo):
+    return {"command": task_info.command, "timeout": task_info.timeout, "notify_on_failure": task_info.notify_on_failure}
+
+
 def _register_task(task_info: TaskInfo, project_info: ProjectInfo, trigger: BaseTrigger):
     name = task_info.name
     task = task_dict.get(name)
     if task is None:
-        task = UvTask(name=name, cmd=task_info.command, project_path=project_info.project_path, timeout=task_info.timeout)
+        task = UvTask(
+            name=name,
+            cmd=task_info.command,
+            project_path=project_info.project_path,
+            timeout=task_info.timeout,
+            history_id=task_info.history_id,
+            project_name=task_info.project_name,
+        )
 
     scheduler.add_job(
         func=task.run,
@@ -166,7 +189,8 @@ def _register_task(task_info: TaskInfo, project_info: ProjectInfo, trigger: Base
         job_id=name,
         paused=task_info.status == TaskStatus.PAUSED,
         replace_existing=True,
-        kwargs={"command": task_info.command, "timeout": task_info.timeout},
+        coalesce=False,
+        kwargs=_run_settings(task_info),
     )
     task_dict[name] = task
 
@@ -265,6 +289,9 @@ def sync_task():
             if not shlex.split(task_info.command):
                 raise ValueError("Enter a command.")
             trigger = scheduler.parse_trigger(task_info.cron)
+            if task_info.history_id is None:
+                task_info = task_info.model_copy(update={"history_id": uuid4().hex})
+                task_db[task_name] = task_info
             _register_task(task_info, project_info, trigger)
         except (ValueError, OSError) as exc:
             _logger.warning("Could not register task %s: %s", task_name, exc)

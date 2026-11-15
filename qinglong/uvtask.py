@@ -4,11 +4,14 @@ import shlex
 import signal
 import subprocess
 import threading
+from datetime import datetime
 from pathlib import Path
 
-from . import errors
+from . import errors, notify, runs
 from .config import settings as cfg
+from .download import git_revision
 from .filelog import RotatingLogFile
+from .models import RunSource, RunStatus
 
 _project_locks: dict[Path, threading.Lock] = {}
 _prepared_projects: set[Path] = set()
@@ -33,6 +36,9 @@ class UvTask:
         uv_args: str = "",
         max_log_size: int | None = None,
         timeout: int = 0,
+        *,
+        history_id: str | None = None,
+        project_name: str = "",
     ):
         self.name = name
         self.cmd = cmd
@@ -40,6 +46,8 @@ class UvTask:
         self.project_path = Path(project_path)
         self.max_log_size = cfg.TASK_LOG_MAX_BYTES if max_log_size is None else max_log_size
         self.timeout = timeout
+        self.history_id = history_id
+        self.project_name = project_name
         self.log_file = RotatingLogFile(
             cfg.TASK_LOG_PATH / (self.name + ".log"), max_size=self.max_log_size, backup_count=cfg.TASK_LOG_BACKUP_COUNT
         )
@@ -48,7 +56,8 @@ class UvTask:
         self._process: subprocess.Popen[str] | None = None
         self._finished: threading.Event | None = None
         self._enabled = True
-        self._stop_reason: str | None = None
+        self._shutting_down = False
+        self._stop_reason: tuple[RunStatus, str] | None = None
 
     @property
     def is_running(self) -> bool:
@@ -65,10 +74,24 @@ class UvTask:
             if finished is not None and not stop_running:
                 raise errors.TaskRunningError(self.name)
             self._enabled = False
+            self._shutting_down = stop_running
         if finished is not None:
-            self._stop(finished, "Service shutdown")
+            self._stop(finished, "interrupted", "Service shutdown")
 
-    def run(self, *, command: str | None = None, timeout: int | None = None):
+    def record_skips(self, source: RunSource, times: list[datetime], reason: str):
+        with self._lock:
+            if self._enabled and self.history_id is not None:
+                runs.skip_runs(self.history_id, source, times, reason)
+
+    def run(
+        self,
+        *,
+        command: str | None = None,
+        timeout: int | None = None,
+        scheduled_at: datetime | None = None,
+        source: RunSource = "manual",
+        notify_on_failure: bool = False,
+    ):
         command = self.cmd if command is None else command
         timeout = self.timeout if timeout is None else timeout
         task_path = self.project_path.parent if self.project_path.is_file() else self.project_path
@@ -81,41 +104,82 @@ class UvTask:
         cmd.extend(shlex.split(command))
         with self._lock:
             if not self._enabled or self._finished is not None:
+                if self._shutting_down and self.history_id is not None and scheduled_at is not None:
+                    runs.skip_runs(self.history_id, source, [scheduled_at], "Service shut down before the run started")
                 return
             finished = self._finished = threading.Event()
             self._stop_reason = None
 
         timer = None
-        if timeout > 0:
-            timer = threading.Timer(timeout, self._stop, args=(finished, f"Timed out after {timeout}s"))
-            timer.start()
+        run_id = None
+        output = runs.RunOutput() if self.history_id is not None and scheduled_at is not None else None
         return_code = None
+        reason = None
+
+        def log(message: str):
+            line = self.log_file.log(message)
+            if output is not None:
+                output.append(line)
+
         try:
-            with self.log_file as log_f:
+            if timeout > 0:
+                timer = threading.Timer(timeout, self._stop, args=(finished, "timed_out", f"Timed out after {timeout}s"))
+                timer.start()
+            if self.history_id is not None and scheduled_at is not None:
+                _, commit = git_revision(task_path)
+                run_id = runs.start_run(self.history_id, source, scheduled_at, commit)
+            with self.log_file:
                 try:
-                    log_f.log("Run started")
+                    log("Run started")
                     if has_project:
-                        project_dir = task_path.resolve()
-                        with _project_locks.setdefault(project_dir, threading.Lock()):
-                            if project_dir not in _prepared_projects:
-                                return_code = self._execute(["uv", "venv", "--clear", ".venv"], task_path, log_f)
-                                if return_code != 0:
-                                    return return_code
-                                _prepared_projects.add(project_dir)
-                    return_code = self._execute(cmd, task_path, log_f)
+                        return_code = self._prepare_project(task_path, log)
+                        if return_code != 0:
+                            return return_code
+                    return_code = self._execute(cmd, task_path, log)
                     return return_code
+                except Exception as exc:
+                    reason = str(exc)
+                    raise
                 finally:
                     if timer is not None:
                         timer.cancel()
                         timer.join()
                     with self._stop_lock:
-                        log_f.log(f"{self._stop_reason or 'Run finished'} (exit code {return_code})")
+                        status: RunStatus = "succeeded" if return_code == 0 else "failed"
+                        if self._stop_reason is not None:
+                            status, reason = self._stop_reason
+                        try:
+                            log(f"{reason or 'Run finished'} (exit code {return_code})")
+                        finally:
+                            if self.history_id is not None and run_id is not None and output is not None:
+                                runs.finish_run(self.history_id, run_id, status, return_code, reason, output.text())
+                                if notify_on_failure:
+                                    notify.enqueue(self.history_id, self.project_name, self.name, run_id, status)
         finally:
+            if timer is not None:
+                timer.cancel()
             with self._lock:
                 self._finished = None
                 finished.set()
 
-    def _execute(self, cmd, task_path, log_f):
+    def _prepare_project(self, task_path, log):
+        project_dir = task_path.resolve()
+        lock = _project_locks.setdefault(project_dir, threading.Lock())
+        while not lock.acquire(timeout=0.1):
+            with self._lock:
+                if self._stop_reason is not None:
+                    return None
+        try:
+            if project_dir in _prepared_projects:
+                return 0
+            code = self._execute(["uv", "venv", "--clear", ".venv"], task_path, log)
+            if code == 0:
+                _prepared_projects.add(project_dir)
+            return code
+        finally:
+            lock.release()
+
+    def _execute(self, cmd, task_path, log):
         with self._lock:
             if self._stop_reason is not None:
                 return None
@@ -131,7 +195,7 @@ class UvTask:
                     start_new_session=os.name == "posix",
                 )
             except OSError as exc:
-                log_f.log(f"Could not start task: {exc}")
+                log(f"Could not start task: {exc}")
                 raise
             self._process = process
 
@@ -139,7 +203,7 @@ class UvTask:
             assert process.stdout is not None
             with process.stdout:
                 for line in process.stdout:
-                    log_f.log(line)
+                    log(line)
             return process.wait()
         finally:
             with self._stop_lock:
@@ -153,16 +217,16 @@ class UvTask:
             finished = self._finished
         if finished is None:
             raise errors.TaskNotRunningError(self.name)
-        return_code = self._stop(finished, "Stopped manually")
+        return_code = self._stop(finished, "stopped", "Stopped manually")
         finished.wait(5)
         return return_code
 
-    def _stop(self, finished: threading.Event, reason: str) -> int | None:
+    def _stop(self, finished: threading.Event, status: RunStatus, reason: str) -> int | None:
         with self._stop_lock:
             with self._lock:
                 if self._finished is not finished or self._stop_reason is not None:
                     return None
-                self._stop_reason = reason
+                self._stop_reason = (status, reason)
                 process = self._process
             if process is not None:
                 return self._terminate(process)

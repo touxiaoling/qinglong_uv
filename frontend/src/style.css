@@ -307,6 +307,8 @@ kbd { white-space: nowrap; font: 10px var(--mono); border: 1px solid var(--borde
 .row-cron { display: block; margin-top: 3px; font: 11px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-status { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
 .row-status:has(.live) { color: var(--green); font-weight: 650; }
+.row-result { display: block; color: var(--muted); font-size: 11px; }
+.row-result.failed, .row-result.timed_out { color: var(--red); }
 .row-next { display: grid; gap: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .row-next small, .no-next { color: var(--muted); }
 .empty { display: grid; place-content: center; justify-items: center; flex: 1; gap: 10px; padding: 18px; text-align: center; color: var(--muted); }
@@ -386,6 +388,16 @@ kbd { white-space: nowrap; font: 10px var(--mono); border: 1px solid var(--borde
 .task-info > div { display: grid; grid-template-columns: minmax(75px, 1fr) minmax(0, 2fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .task-info dt { color: var(--muted); }
 .task-info dd { overflow-wrap: anywhere; }
+.run-history { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr); align-items: start; gap: 12px; }
+.run-history p { margin: 6px 0; color: var(--muted); }
+.run-list { display: grid; gap: 4px; max-height: 220px; overflow: auto; }
+.run-entry { display: grid; gap: 2px; padding: 6px 8px; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.run-entry[aria-pressed="true"] { background: var(--selection); border-color: var(--accent); }
+.run-entry span, .run-entry small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.run-detail { min-width: 0; }
+.run-output { padding: 9px; max-height: 240px; overflow: auto; background: var(--code); color: var(--code-ink); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.form-fields .form-check { display: flex; align-items: center; gap: 7px; }
+.form-fields .form-check input { width: auto; min-height: auto; }
 code { font: 12px var(--mono); }
 
 .toast {
@@ -471,6 +483,8 @@ dialog::backdrop { background: #171d3463; backdrop-filter: blur(3px); }
   .task-glyph, .row-cron { display: none; }
   .row-name strong { font-size: 12px; }
   .row-status, .row-next { font-size: 11px; }
+  .run-history { grid-template-columns: minmax(0, 1fr); }
+  .run-list { max-height: 130px; }
   .row-status .status-dot { width: 5px; height: 5px; flex-basis: 5px; }
   .pill { padding: 4px 5px; font-size: 10px; }
   .details { padding: 9px 11px 11px; }

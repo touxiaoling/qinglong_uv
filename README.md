@@ -18,7 +18,8 @@ Core idea: clone Git projects locally, initialize and run tasks with `uv`, and m
 - 为项目创建定时任务（支持 crontab） | Create scheduled tasks per project (crontab supported)
 - 也支持用纯数字秒数作为间隔触发（例如 `60`） | Also supports pure integer seconds as interval triggers (e.g. `60`)
 - 可暂停或恢复调度、立即运行、停止进程、删除任务和同步任务注册表 | Pause or resume schedules, run immediately, stop processes, delete tasks, and sync the task registry
-- 任务总览逐行显示调度状态、进程状态和下次运行时间。选中任务可在表格下方查看日志，每 2 秒刷新 | The task overview shows schedule state, process state, and next run time for every task. Select a task to view its logs below the table, refreshed every 2 seconds
+- 任务总览显示最近一次触发的结果。选中任务后，可查看实时日志，以及最近 100 条历史记录（触发来源、计划时间、起止时间、结果、退出码、启动时的 Git 提交和对应日志尾部）。历史日志最多保留每次运行最后 1,000 行、64,000 个字符。 | The task overview shows the latest outcome. Select a task to see live logs and the 100 most recent history entries, including trigger source, planned and actual times, outcome, exit code, starting Git commit, and up to 1,000 lines and 64,000 characters of output per run.
+- 项目详情显示工作目录当前的 Git 分支和提交。 | Project details show the checkout's current Git branch and commit.
 
 ### 运行机制 | Runtime Behavior
 - 任务实际执行命令格式：`uv run <你的命令>` | Actual execution format: `uv run <your command>`
@@ -69,7 +70,7 @@ npm --prefix frontend run dev
 ### 3) 使用 Web 界面 | Use the Web UI
 
 1. 点击侧栏 `Projects` 旁的 `+` 克隆 Git 项目。选中项目后可拉取更新或通过工具栏菜单编辑配置。 | Use `+` beside `Projects` to clone a Git project. Select a project to pull updates or edit its configuration from the toolbar menu.
-2. 点击 `New Task`，填写全局唯一的任务名、五字段 cron 表达式或正整数秒数、执行命令和超时。 | Use `New Task` to enter a globally unique name, five-field cron expression or positive interval in seconds, command, and timeout.
+2. 点击 `New Task`，填写全局唯一的任务名、五字段 cron 表达式或正整数秒数和执行命令。勾选 `Stop after a time limit` 可设置秒数，覆盖环境准备和执行。 | Use `New Task` to enter a globally unique name, five-field cron or interval in seconds, and command. Enable `Stop after a time limit` to limit environment setup and execution together.
 3. 选择任务后用 `Run Now` 立即运行，在 `Logs` 查看输出。暂停调度后仍可手动运行一次。 | Select a task, click `Run Now`, and view its output in `Logs`. Paused schedules still allow a manual run.
 
 ## Docker 部署 | Docker Deployment
@@ -81,6 +82,7 @@ This repository includes `dockerfile` and `docker-compose.yaml`.
 docker compose up -d --build
 ```
 
+- Docker 构建使用 Node.js 和 LinuxServer FFmpeg 的 `latest` 镜像。Compose 每次构建都会向仓库检查这两个标签，直接用 `docker build` 时加 `--pull`。 | The Docker build uses the `latest` images for Node.js and LinuxServer FFmpeg. Compose checks the registries for these tags on every build. Use `--pull` when running `docker build` directly.
 - 默认容器内部端口为 `80` | Default container port: `80`
 - `docker-compose.override.yaml` 示例将本机 `8080` 映射到容器 `80` | Example override maps host `8080` -> container `80`
 - 镜像构建时打包 Vue 页面，由 FastAPI 提供，运行时共用一个端口。 | The Docker build bundles Vue and FastAPI serves it on the same port as the API.
@@ -98,7 +100,11 @@ Configuration is defined in `qinglong/config.py` (based on `pydantic-settings`, 
 - `TASK_LOG_PATH`：任务日志目录（默认 `./data/log`） | Task log directory (default `./data/log`)
 - `TASK_LOG_MAX_BYTES`：单日志最大大小（默认 `1MB`） | Max size per log file (default `1MB`)
 - `TASK_LOG_BACKUP_COUNT`：日志备份数量（默认 `5`） | Number of rotated backups (default `5`)
+- `NOTIFY_WEBHOOK_URL`：接收通知的 HTTP 地址。设置后，在任务中勾选 `Send failure and recovery alerts`。首次失败或超时、连续第三次失败、以及恢复成功时各发送一次 JSON POST，`event` 分别为 `failed`、`still_failing`、`recovered`。发送失败记入服务日志，后续符合条件的运行会再次尝试。 | Configure an HTTP endpoint and opt in per task. The panel sends a JSON POST on the first failure or timeout, the third consecutive failure, and recovery. Delivery errors go to the service log and are retried on subsequent eligible runs.
+- `PANEL_PUBLIC_URL`：面板的访问地址。设置后，Webhook 消息包含指向该次运行的 `run_url`。 | Panel base URL. When set, webhook messages include a `run_url` that opens the corresponding history entry.
 - `DEBUG`：调试开关（默认 `True`） | Debug flag (default `True`)
+
+使用 Compose 部署时，将通知环境变量加到 `qinglong-uv` 服务的 `environment`。通知为异步投递，接收端不可用时可从服务日志查看投递错误。 | For Compose deployments, add the notification variables under the `qinglong-uv` service's `environment`. Delivery runs asynchronously and reports errors in the service log.
 
 ## 目录结构（核心）| Core Structure
 
@@ -124,8 +130,6 @@ data/
 
 ## Roadmap
 
-- [ ] 运行历史：记录触发来源、起止时间、结果和对应日志。 | Run history with trigger source, start and end times, outcome, and per-run logs.
-- [ ] 失败通知：按任务订阅失败和超时，支持重复失败时合并通知。 | Per-task failure and timeout alerts with deduplication.
 - [ ] 调度预览：保存前展示时区和接下来几次触发时间。 | Schedule preview with the time zone and next few fire times before saving.
 
 ## 贡献 | Contributing
