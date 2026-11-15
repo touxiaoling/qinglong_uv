@@ -1,8 +1,8 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  Activity, ArrowDownToLine, ArrowLeft, Check, ChevronDown, ChevronRight, CircleAlert,
-  Clock3, Ellipsis, FileCode2, FolderGit2, Info, Layers3, PanelLeft, Pause, Pencil, Play, Plus,
+  Activity, ArrowDownToLine, Check, ChevronDown, ChevronRight, CircleAlert,
+  Ellipsis, FileCode2, FolderGit2, Info, Layers3, PanelLeft, Pause, Pencil, Play, Plus,
   RefreshCw, Search, Square, Terminal, Trash2, X,
 } from '@lucide/vue'
 import { projectPath, request, taskPath } from './api.js'
@@ -21,17 +21,16 @@ const notice = ref('')
 const actionError = ref('')
 const busy = ref(false)
 const sidebarOpen = ref(false)
-const mobileDetails = ref(false)
 const menu = ref('')
 const dialog = ref(null)
 const dialogElement = ref()
 const searchInput = ref()
+const taskTable = ref()
 const logsElement = ref()
 const lines = ref([])
 const logError = ref('')
 const logsLoading = ref(false)
 const following = ref(true)
-const compactLayout = ref(false)
 const tab = ref('logs')
 const form = ref({})
 const formError = ref('')
@@ -40,7 +39,6 @@ let taskRefresh = 0
 let logRefresh = 0
 let noticeTimer
 let pollTimer
-let compactQuery
 
 const project = computed(() => projects.value.find(({ name }) => name === selectedProjectName.value))
 const scopedTasks = computed(() => tasks.value.filter((task) => (
@@ -58,13 +56,16 @@ const groups = computed(() => projects.value.map((item) => ({
 })))
 const taskProjectExists = computed(() => projects.value.some(({ name }) => name === task.value?.project_name))
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
+const dayFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'medium', hourCycle: 'h23' })
 
 function dateLabel(value) {
   return value ? dateTime.format(new Date(value.replace(' ', 'T'))) : '—'
 }
 
-function chooseDefaultTask() {
-  if (!task.value) selectedTaskName.value = visibleTasks.value.find(({ is_running }) => is_running)?.name ?? visibleTasks.value[0]?.name ?? null
+function scheduleState(item) {
+  if (!item.registered) return 'Unregistered'
+  return item.status === 'paused' ? 'Paused' : 'Enabled'
 }
 
 async function loadProjects() {
@@ -86,7 +87,7 @@ async function loadTasks() {
     const data = await request('/tasks')
     if (revision !== taskRefresh) return
     tasks.value = data.sort((a, b) => a.name.localeCompare(b.name))
-    chooseDefaultTask()
+    if (!task.value) selectedTaskName.value = null
     taskError.value = ''
   } catch (error) {
     if (revision === taskRefresh) taskError.value = error.message
@@ -104,16 +105,23 @@ async function loadWorkspace() {
 function selectProject(name) {
   selectedProjectName.value = name
   search.value = ''
-  mobileDetails.value = false
+  selectedTaskName.value = null
   sidebarOpen.value = false
   menu.value = ''
-  chooseDefaultTask()
 }
 
 function selectTask(name) {
   selectedTaskName.value = name
-  mobileDetails.value = true
+  tab.value = 'logs'
   menu.value = ''
+}
+
+async function closeTask() {
+  const trigger = taskTable.value?.querySelector('button[aria-expanded="true"]')
+  selectedTaskName.value = null
+  menu.value = ''
+  await nextTick()
+  trigger?.focus({ preventScroll: true })
 }
 
 function refreshLogScope() {
@@ -127,7 +135,7 @@ function refreshLogScope() {
 
 async function loadLogs(showLoading = false) {
   const current = task.value
-  if (!current?.registered || tab.value !== 'logs' || document.hidden || (compactLayout.value && !mobileDetails.value)) return
+  if (!current?.registered || tab.value !== 'logs' || document.hidden) return
   const revision = ++logRefresh
   if (showLoading) logsLoading.value = true
   try {
@@ -309,15 +317,8 @@ function keyboard(event) {
   }
 }
 
-function updateCompactLayout() {
-  compactLayout.value = compactQuery.matches
-}
-
-watch([() => task.value?.name, () => task.value?.registered, tab, compactLayout, mobileDetails], refreshLogScope)
+watch([() => task.value?.name, () => task.value?.registered, tab], refreshLogScope)
 onMounted(() => {
-  compactQuery = window.matchMedia('(max-width: 610px)')
-  updateCompactLayout()
-  compactQuery.addEventListener('change', updateCompactLayout)
   void loadWorkspace()
   pollTimer = setInterval(poll, 2000)
   window.addEventListener('keydown', keyboard)
@@ -326,14 +327,13 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearInterval(pollTimer)
   clearTimeout(noticeTimer)
-  compactQuery.removeEventListener('change', updateCompactLayout)
   window.removeEventListener('keydown', keyboard)
   document.removeEventListener('visibilitychange', poll)
 })
 </script>
 
 <template>
-  <div class="workspace" :class="{ 'show-details': mobileDetails }" @click="menu = ''">
+  <div class="workspace" @click="menu = ''">
     <button v-if="sidebarOpen" class="sidebar-scrim" aria-label="Close projects" @click="sidebarOpen = false"></button>
     <aside class="sidebar" :class="{ 'sidebar-open': sidebarOpen }" aria-label="Projects">
       <div class="brand">
@@ -414,19 +414,37 @@ onBeforeUnmount(() => {
             </label>
           </div>
           <div v-if="visibleTasks.length" class="list-scroll">
-            <div class="row-labels" aria-hidden="true"><span>Task</span><span>Schedule</span><span>Process</span></div>
-            <ul class="task-rows">
-              <li v-for="item in visibleTasks" :key="item.name">
-                <button class="task-row" :class="{ selected: item.name === selectedTaskName }"
-                  :aria-pressed="item.name === selectedTaskName" @click="selectTask(item.name)">
-                  <span class="row-name"><span class="task-glyph" :class="{ live: item.is_running }"><Terminal :size="17" /></span>
-                    <span><strong>{{ item.name }}</strong><small>{{ item.project_name }}</small></span>
-                  </span>
-                  <span class="row-cron" :title="item.cron">{{ /^\d+$/.test(item.cron) ? item.cron + 's interval' : item.cron }}</span>
-                  <span class="row-status"><span class="status-dot" :class="item.is_running ? 'live' : ''"></span>{{ item.is_running ? 'Running' : 'Idle' }}<ChevronRight :size="13" /></span>
-                </button>
-              </li>
-            </ul>
+            <table ref="taskTable" class="task-table" aria-label="Task overview">
+              <thead>
+                <tr><th scope="col">Task</th><th scope="col">Schedule</th><th scope="col">Process</th><th scope="col">Next run</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in visibleTasks" :key="item.name" class="task-row"
+                  :class="{ selected: item.name === task?.name }" @click="selectTask(item.name)">
+                  <th scope="row">
+                    <button class="row-name" :title="item.name" :aria-expanded="item.name === task?.name"
+                      :aria-controls="item.name === task?.name ? 'task-details' : undefined" @click.stop="selectTask(item.name)">
+                      <span class="task-glyph" :class="{ live: item.is_running }"><Terminal :size="17" /></span>
+                      <span><strong>{{ item.name }}</strong><small :title="item.project_name">{{ item.project_name }}</small></span>
+                    </button>
+                  </th>
+                  <td>
+                    <span class="pill" :class="scheduleState(item).toLowerCase()">{{ scheduleState(item) }}</span>
+                    <small class="row-cron" :title="item.cron">{{ /^\d+$/.test(item.cron) ? item.cron + 's interval' : item.cron }}</small>
+                  </td>
+                  <td>
+                    <span class="row-status"><span class="status-dot" :class="{ live: item.is_running }"></span>{{ item.is_running ? 'Running' : 'Idle' }}</span>
+                  </td>
+                  <td>
+                    <time v-if="item.next_run_at" class="row-next" :datetime="item.next_run_at" :title="dateLabel(item.next_run_at)">
+                      <span>{{ timeFormat.format(new Date(item.next_run_at)) }}</span>
+                      <small>{{ dayFormat.format(new Date(item.next_run_at)) }}</small>
+                    </time>
+                    <span v-else class="no-next" aria-label="No next run">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
           <div v-else class="empty">
             <span class="empty-icon"><Layers3 :size="25" /></span>
@@ -437,32 +455,29 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section v-if="task" class="details" aria-label="Task details">
-          <button class="button subtle details-back" @click="mobileDetails = false"><ArrowLeft :size="15" /> Tasks</button>
+        <section v-if="task" id="task-details" class="details" aria-labelledby="task-detail-title">
           <div class="detail-heading">
             <span class="detail-icon"><Terminal :size="24" /></span>
-            <div class="detail-title"><span>{{ task.project_name }}</span><h2>{{ task.name }}</h2></div>
-            <div class="menu-anchor">
-              <button class="icon-button outlined" aria-label="Task actions" title="Task actions" :aria-expanded="menu === 'task'"
-                @click.stop="toggleMenu('task')"><Ellipsis :size="19" /></button>
-              <div v-if="menu === 'task'" class="popover" @click.stop>
-                <button :disabled="busy || !taskProjectExists" @click="editTask"><Pencil :size="15" /> Edit task</button>
-                <button :disabled="busy || task.is_running" class="danger-text" @click="confirmTaskRemoval"><Trash2 :size="15" /> Delete task</button>
-              </div>
+            <div class="detail-title"><span>{{ task.project_name }}</span><h2 id="task-detail-title">{{ task.name }}</h2></div>
+            <div class="detail-actions">
+              <button v-if="task.is_running" class="button stop" :disabled="busy" @click="confirmKill"><Square :size="14" /> Stop</button>
+              <button v-else class="button primary" :disabled="busy || !task.registered || !taskProjectExists" @click="taskAction('run', 'Run requested')"><Play :size="15" /> Run Now</button>
+              <button v-if="task.status === 'paused'" class="button subtle" :disabled="busy || !task.registered || !taskProjectExists"
+                @click="taskAction('resume', 'Schedule resumed')"><Play :size="14" /> Resume Schedule</button>
+              <button v-else class="button subtle" :disabled="busy || !task.registered"
+                @click="taskAction('pause', 'Schedule paused')"><Pause :size="15" /> Pause Schedule</button>
             </div>
-          </div>
-          <div class="detail-states">
-            <span class="pill" :class="{ live: task.is_running }"><span class="status-dot"></span>{{ task.is_running ? 'Running' : 'Idle' }}</span>
-            <span class="pill" :class="{ paused: task.status === 'paused' }"><Clock3 :size="13" /> {{ !task.registered ? 'Unregistered' : task.status === 'paused' ? 'Schedule paused' : 'Schedule enabled' }}</span>
-            <span v-if="task.next_run_at" class="next-run">Next {{ dateLabel(task.next_run_at) }}</span>
-          </div>
-          <div class="detail-actions">
-            <button v-if="task.is_running" class="button stop" :disabled="busy" @click="confirmKill"><Square :size="14" /> Stop</button>
-            <button v-else class="button primary" :disabled="busy || !task.registered || !taskProjectExists" @click="taskAction('run', 'Run requested')"><Play :size="15" /> Run Now</button>
-            <button v-if="task.status === 'paused'" class="button subtle" :disabled="busy || !task.registered || !taskProjectExists"
-              @click="taskAction('resume', 'Schedule resumed')"><Play :size="14" /> Resume Schedule</button>
-            <button v-else class="button subtle" :disabled="busy || !task.registered"
-              @click="taskAction('pause', 'Schedule paused')"><Pause :size="15" /> Pause Schedule</button>
+            <div class="detail-tools">
+              <div class="menu-anchor">
+                <button class="icon-button outlined" aria-label="Task actions" title="Task actions" :aria-expanded="menu === 'task'"
+                  @click.stop="toggleMenu('task')"><Ellipsis :size="19" /></button>
+                <div v-if="menu === 'task'" class="popover" @click.stop>
+                  <button :disabled="busy || !taskProjectExists" @click="editTask"><Pencil :size="15" /> Edit task</button>
+                  <button :disabled="busy || task.is_running" class="danger-text" @click="confirmTaskRemoval"><Trash2 :size="15" /> Delete task</button>
+                </div>
+              </div>
+              <button class="icon-button quiet" aria-label="Close task details" title="Close task details" @click="closeTask"><X :size="18" /></button>
+            </div>
           </div>
 
           <div class="detail-tabs" aria-label="Task view">
@@ -489,9 +504,6 @@ onBeforeUnmount(() => {
             <div><dt>Updated</dt><dd>{{ dateLabel(task.upgrade_at) }}</dd></div>
             <div><dt>Created</dt><dd>{{ dateLabel(task.created_at) }}</dd></div>
           </dl>
-        </section>
-        <section v-else class="details unselected" aria-label="Task details">
-          <div class="empty"><span class="empty-icon"><Terminal :size="25" /></span><strong>Select a task</strong></div>
         </section>
       </div>
     </main>

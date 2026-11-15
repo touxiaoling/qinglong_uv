@@ -10,12 +10,16 @@ from . import errors
 from .config import settings as cfg
 from .filelog import RotatingLogFile
 
+_project_locks: dict[Path, threading.Lock] = {}
+_prepared_projects: set[Path] = set()
+
 
 @functools.cache
 def _env():
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
     env.pop("PYTHONPATH", None)
+    env.pop("UV_PROJECT_ENVIRONMENT", None)
     env["PYTHONUNBUFFERED"] = "1"
     return env
 
@@ -49,7 +53,7 @@ class UvTask:
     @property
     def is_running(self) -> bool:
         with self._lock:
-            return self._process is not None
+            return self._finished is not None
 
     @property
     def env(self):
@@ -57,26 +61,64 @@ class UvTask:
 
     def disable(self, *, stop_running=False):
         with self._lock:
-            process = self._process
-            if process is not None and not stop_running:
+            finished = self._finished
+            if finished is not None and not stop_running:
                 raise errors.TaskRunningError(self.name)
             self._enabled = False
-        if process is not None:
-            self._stop(process, "Service shutdown")
+        if finished is not None:
+            self._stop(finished, "Service shutdown")
 
     def run(self, *, command: str | None = None, timeout: int | None = None):
         command = self.cmd if command is None else command
         timeout = self.timeout if timeout is None else timeout
         task_path = self.project_path.parent if self.project_path.is_file() else self.project_path
         cmd = ["uv", "run"]
-        if not (task_path / "pyproject.toml").is_file():
+        has_project = (task_path / "pyproject.toml").is_file()
+        if not has_project:
             # A script-only checkout can be nested inside the panel's own project.
             cmd.extend(["--no-project", "--isolated"])
         cmd.extend(shlex.split(self.uv_args))
         cmd.extend(shlex.split(command))
         with self._lock:
-            if not self._enabled or self._process is not None:
+            if not self._enabled or self._finished is not None:
                 return
+            finished = self._finished = threading.Event()
+            self._stop_reason = None
+
+        timer = None
+        if timeout > 0:
+            timer = threading.Timer(timeout, self._stop, args=(finished, f"Timed out after {timeout}s"))
+            timer.start()
+        return_code = None
+        try:
+            with self.log_file as log_f:
+                try:
+                    log_f.log("Run started")
+                    if has_project:
+                        project_dir = task_path.resolve()
+                        with _project_locks.setdefault(project_dir, threading.Lock()):
+                            if project_dir not in _prepared_projects:
+                                return_code = self._execute(["uv", "venv", "--clear", ".venv"], task_path, log_f)
+                                if return_code != 0:
+                                    return return_code
+                                _prepared_projects.add(project_dir)
+                    return_code = self._execute(cmd, task_path, log_f)
+                    return return_code
+                finally:
+                    if timer is not None:
+                        timer.cancel()
+                        timer.join()
+                    with self._stop_lock:
+                        log_f.log(f"{self._stop_reason or 'Run finished'} (exit code {return_code})")
+        finally:
+            with self._lock:
+                self._finished = None
+                finished.set()
+
+    def _execute(self, cmd, task_path, log_f):
+        with self._lock:
+            if self._stop_reason is not None:
+                return None
             try:
                 process = subprocess.Popen(
                     cmd,
@@ -89,76 +131,65 @@ class UvTask:
                     start_new_session=os.name == "posix",
                 )
             except OSError as exc:
-                with self.log_file as log_f:
-                    log_f.log(f"Could not start task: {exc}")
+                log_f.log(f"Could not start task: {exc}")
                 raise
             self._process = process
-            finished = self._finished = threading.Event()
-            self._stop_reason = None
 
-        timer = None
-        if timeout > 0:
-            timer = threading.Timer(timeout, self._stop, args=(process, f"Timed out after {timeout}s"))
-            timer.start()
         try:
-            with self.log_file as log_f:
-                try:
-                    assert process.stdout is not None
-                    with process.stdout:
-                        log_f.log("Run started")
-                        for line in process.stdout:
-                            log_f.log(line)
-                    return_code = process.wait()
-                finally:
-                    if timer is not None:
-                        timer.cancel()
-                        timer.join()
-                    if process.poll() is None:
-                        self._stop(process, "Log capture failed")
-                    with self._stop_lock:
-                        log_f.log(f"{self._stop_reason or 'Run finished'} (exit code {process.returncode})")
+            assert process.stdout is not None
+            with process.stdout:
+                for line in process.stdout:
+                    log_f.log(line)
+            return process.wait()
         finally:
-            with self._stop_lock, self._lock:
-                self._process = None
-                self._finished = None
-                finished.set()
-        return return_code
+            with self._stop_lock:
+                if process.poll() is None:
+                    self._terminate(process)
+                with self._lock:
+                    self._process = None
 
     def kill(self) -> int | None:
         with self._lock:
-            process = self._process
             finished = self._finished
-        if process is None or finished is None:
+        if finished is None:
             raise errors.TaskNotRunningError(self.name)
-        return_code = self._stop(process, "Stopped manually")
+        return_code = self._stop(finished, "Stopped manually")
         finished.wait(5)
         return return_code
 
-    def _stop(self, process: subprocess.Popen[str], reason: str) -> int | None:
+    def _stop(self, finished: threading.Event, reason: str) -> int | None:
         with self._stop_lock:
-            if self._process is not process or self._stop_reason is not None:
-                return process.returncode
-            try:
-                if os.name == "posix":
-                    os.killpg(process.pid, signal.SIGTERM)
-                else:
-                    process.terminate()
-            except ProcessLookupError:
-                return process.poll()
-            self._stop_reason = reason
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-            # uv can exit before a descendant that still holds the output pipe open.
-            try:
-                if os.name == "posix":
-                    os.killpg(process.pid, signal.SIGKILL)
-                elif process.poll() is None:
-                    process.kill()
-            except ProcessLookupError:
-                pass
-            return process.wait()
+            with self._lock:
+                if self._finished is not finished or self._stop_reason is not None:
+                    return None
+                self._stop_reason = reason
+                process = self._process
+            if process is not None:
+                return self._terminate(process)
+        return None
+
+    @staticmethod
+    def _terminate(process: subprocess.Popen[str]) -> int | None:
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                process.terminate()
+        except ProcessLookupError:
+            return process.poll()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        # uv can exit before a descendant that still holds the output pipe open.
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGKILL)
+            elif process.poll() is None:
+                process.kill()
+        except ProcessLookupError:
+            pass
+        return process.wait()
 
     def get_logs(self, limit: int = 1000):
         return self.log_file.readlines(limit)

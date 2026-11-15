@@ -55,6 +55,23 @@ def test_uvtask_run(uvtask: UvTask):
     assert any("Hello, World!" in line for line in uvtask.get_logs())
 
 
+def test_project_environment_is_cleared_once_for_all_tasks(uvtask: UvTask, temp_project_path: Path):
+    env_dir = temp_project_path / ".venv"
+    env_dir.mkdir()
+    (env_dir / "pyvenv.cfg").touch()
+    old = env_dir / "old_dependency"
+    old.touch()
+
+    assert uvtask.run() == 0
+    assert not old.exists()
+
+    kept = env_dir / "marker"
+    kept.touch()
+    second_task = UvTask(name="second", cmd="main.py", project_path=str(temp_project_path), uv_args=PYTHON_ARGS)
+    assert second_task.run() == 0
+    assert kept.is_file()
+
+
 def test_uvtask_with_file_project_path(tmp_path: Path):
     """测试使用文件路径作为项目路径"""
     test_file = tmp_path / "test.py"

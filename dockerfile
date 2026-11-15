@@ -24,15 +24,18 @@ RUN apt-get update && \
     echo $TZ > /etc/timezone && \
     /ffmpegwrapper.sh -version
 
-COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /uvx /bin/
+ENV UV_INSTALL_DIR=/usr/local/bin
+ENV UV_NO_MODIFY_PATH=1
 
-COPY .python-version pyproject.toml uv.lock README.md ./
+RUN curl -fsSL https://releases.astral.sh/github/uv/releases/download/0.13.8/uv-installer.sh -o /tmp/uv-installer.sh && \
+    sh /tmp/uv-installer.sh && \
+    rm /tmp/uv-installer.sh
+
+COPY .python-version pyproject.toml uv.lock README.md docker-entrypoint.sh ./
 COPY ./qinglong ./qinglong
 COPY --from=frontend /build/qinglong/web_dist ./qinglong/web_dist
-RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_LINK_MODE=copy UV_PYTHON_INSTALL_DIR=/opt/panel-python uv sync --locked --no-dev --no-editable
 
 ENV UV_CACHE_DIR=/code/data/.cache/uv
 ENV UV_PYTHON_INSTALL_DIR=/code/data/.cache/python
 
-ENTRYPOINT ["/code/.venv/bin/python", "-m", "qinglong"]
+ENTRYPOINT ["sh", "/code/docker-entrypoint.sh"]

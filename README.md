@@ -18,11 +18,12 @@ Core idea: clone Git projects locally, initialize and run tasks with `uv`, and m
 - 为项目创建定时任务（支持 crontab） | Create scheduled tasks per project (crontab supported)
 - 也支持用纯数字秒数作为间隔触发（例如 `60`） | Also supports pure integer seconds as interval triggers (e.g. `60`)
 - 可暂停或恢复调度、立即运行、停止进程、删除任务和同步任务注册表 | Pause or resume schedules, run immediately, stop processes, delete tasks, and sync the task registry
-- 任务详情分别显示调度状态、进程状态和下次运行时间，日志面板打开时每 2 秒刷新 | Task details show schedule state, process state, and next run time. The visible log pane refreshes every 2 seconds
+- 任务总览逐行显示调度状态、进程状态和下次运行时间。选中任务可在表格下方查看日志，每 2 秒刷新 | The task overview shows schedule state, process state, and next run time for every task. Select a task to view its logs below the table, refreshed every 2 seconds
 
 ### 运行机制 | Runtime Behavior
 - 任务实际执行命令格式：`uv run <你的命令>` | Actual execution format: `uv run <your command>`
 - 由 `uv run` 按项目配置和锁文件准备运行环境 | `uv run` prepares the environment using the project's configuration and lockfile
+- 由 `pyproject.toml` 管理的项目在面板启动后首次运行时清空并重建 `.venv`，同一项目的任务共用这次重建。 | A project with `pyproject.toml` gets a clean `.venv` on its first run after startup. Its tasks share that environment.
 - 每次运行记录退出码。在 Linux 和 macOS 上，超时和手动停止会终止任务进程组。 | Each run records its exit code. On Linux and macOS, a timeout or manual stop terminates the task's process group.
 
 ## 环境要求 | Requirements
@@ -32,7 +33,7 @@ Core idea: clone Git projects locally, initialize and run tasks with `uv`, and m
 - Node.js 24 LTS 和 npm（本地前端构建和开发） | Node.js 24 LTS and npm (local frontend builds and development)
 - 操作系统可正常运行 `uv` 与 Python 子进程 | OS environment capable of running `uv` and Python subprocesses
 
-> 面板使用 Python 3.15.2（见 `.python-version`）。各任务项目可声明自己的 Python 版本。 | The panel uses Python 3.15.2 (see `.python-version`). Each task project can declare its own Python version.
+> 面板使用 Python 3.15 系列（见 `.python-version`）。各任务项目可声明自己的 Python 版本。 | The panel uses Python 3.15 (see `.python-version`). Each task project can declare its own Python version.
 
 ## 快速开始 | Quick Start
 
@@ -83,6 +84,7 @@ docker compose up -d --build
 - 默认容器内部端口为 `80` | Default container port: `80`
 - `docker-compose.override.yaml` 示例将本机 `8080` 映射到容器 `80` | Example override maps host `8080` -> container `80`
 - 镜像构建时打包 Vue 页面，由 FastAPI 提供，运行时共用一个端口。 | The Docker build bundles Vue and FastAPI serves it on the same port as the API.
+- 容器每次启动时更新 uv、升级持久化目录中 uv 管理的 CPython 补丁版本，再执行 `uv cache prune --force`，然后由 `uv run --locked` 安装并启动面板。首次启动需要下载解释器和依赖。 | On startup the container updates uv, upgrades persisted uv-managed CPython patch releases, and runs `uv cache prune --force`. It then installs and starts the panel with `uv run --locked`. The first start downloads Python and dependencies.
 - 数据目录挂载：`./data:/code/data`，原有数据可直接使用。 | Data volume: `./data:/code/data`. Existing data can be used directly.
 
 ## 配置说明 | Configuration

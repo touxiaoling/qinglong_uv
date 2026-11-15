@@ -1,6 +1,7 @@
 import os
 import signal
 import subprocess
+from threading import Event
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -14,11 +15,9 @@ def test_uvtask_is_running_false_when_no_process():
     assert t.is_running is False
 
 
-def test_uvtask_is_running_true_when_process_poll_none():
+def test_uvtask_is_running_between_subprocesses():
     t = UvTask(name="n", cmd="x", project_path="/tmp")
-    proc = MagicMock()
-    proc.poll.return_value = None
-    t._process = proc
+    t._finished = Event()
     assert t.is_running is True
 
 
@@ -36,6 +35,5 @@ def test_uvtask_kill_on_wait_timeout_falls_back_to_group_kill(monkeypatch):
     proc = MagicMock()
     proc.pid = 1234
     proc.wait.side_effect = [subprocess.TimeoutExpired("cmd", 5), -signal.SIGKILL]
-    t._process = proc
-    assert t._stop(proc, "Stopped manually") == -signal.SIGKILL
+    assert t._terminate(proc) == -signal.SIGKILL
     assert killpg.call_args_list == [call(1234, signal.SIGTERM), call(1234, signal.SIGKILL)]
